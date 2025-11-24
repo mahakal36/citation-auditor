@@ -1,1 +1,4 @@
 project_id = "ifaocwtvjzlbgimxaqig"
+
+[functions.extract-citations]
+verify_jwt = false
