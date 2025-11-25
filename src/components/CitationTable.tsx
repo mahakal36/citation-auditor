@@ -14,11 +14,12 @@ import type { CitationEntry } from "@/types/citation";
 interface CitationTableProps {
   data: CitationEntry[];
   onDataChange: (data: CitationEntry[]) => void;
+  onRowHover?: (rowIndex: number | null) => void;
 }
 
 const columnHelper = createColumnHelper<CitationEntry>();
 
-export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
+export const CitationTable = ({ data, onDataChange, onRowHover }: CitationTableProps) => {
   const [editingCell, setEditingCell] = useState<{
     rowIndex: number;
     columnId: string;
@@ -227,7 +228,12 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
           </thead>
           <tbody>
             {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/50">
+              <tr
+                key={row.id}
+                className="hover:bg-muted/50 transition-colors"
+                onMouseEnter={() => onRowHover?.(row.index)}
+                onMouseLeave={() => onRowHover?.(null)}
+              >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="border p-2">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
