@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { CitationTable } from "@/components/CitationTable";
+import { PdfHighlightLayer } from "@/components/PdfHighlightLayer";
 import { ChevronLeft, ChevronRight, Upload, Download, Sparkles } from "lucide-react";
 import Papa from "papaparse";
 import type { CitationEntry } from "@/types/citation";
@@ -19,6 +20,10 @@ const Index = () => {
   const [currentData, setCurrentData] = useState<CitationEntry[]>([]);
   const [allSavedData, setAllSavedData] = useState<CitationEntry[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [pageTextContent, setPageTextContent] = useState<any>(null);
+  const [pageViewport, setPageViewport] = useState<any>(null);
+  const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
+  const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
   const { toast } = useToast();
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -28,6 +33,14 @@ const Index = () => {
       description: `Successfully loaded ${numPages} pages`,
     });
   };
+
+  const onPageLoadSuccess = useCallback(async (page: any) => {
+    const textContent = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1 });
+    setPageTextContent(textContent);
+    setPageViewport(viewport);
+    setPageDimensions({ width: viewport.width, height: viewport.height });
+  }, []);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -263,18 +276,32 @@ const Index = () => {
             {/* PDF Viewer */}
             <div className="bg-card rounded-lg border shadow-sm p-6">
               <h2 className="text-xl font-semibold mb-4">Source Document</h2>
-              <div className="border rounded-md overflow-auto bg-muted/20">
+              <div className="border rounded-md overflow-auto bg-muted/20 relative">
                 <Document
                   file={pdfFile}
                   onLoadSuccess={onDocumentLoadSuccess}
                   className="flex justify-center"
                 >
-                  <Page
-                    pageNumber={pageNumber}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="max-w-full"
-                  />
+                  <div className="relative inline-block">
+                    <Page
+                      pageNumber={pageNumber}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="max-w-full"
+                      onLoadSuccess={onPageLoadSuccess}
+                    />
+                    {pageTextContent && pageViewport && currentData.length > 0 && (
+                      <PdfHighlightLayer
+                        citations={currentData}
+                        pageNumber={pageNumber}
+                        pageWidth={pageDimensions.width}
+                        pageHeight={pageDimensions.height}
+                        textContent={pageTextContent}
+                        viewport={pageViewport}
+                        hoveredCitation={hoveredCitation}
+                      />
+                    )}
+                  </div>
                 </Document>
               </div>
             </div>
@@ -290,7 +317,11 @@ const Index = () => {
                   <p>Press "Extract & Validate" to begin</p>
                 </div>
               ) : (
-                <CitationTable data={currentData} onDataChange={setCurrentData} />
+                <CitationTable
+                  data={currentData}
+                  onDataChange={setCurrentData}
+                  onRowHover={setHoveredCitation}
+                />
               )}
             </div>
           </div>
