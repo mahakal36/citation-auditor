@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CitationTable } from "@/components/CitationTable";
 import { PdfHighlightLayer } from "@/components/PdfHighlightLayer";
 import { ChevronLeft, ChevronRight, Upload, Download, Sparkles } from "lucide-react";
-import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import type { CitationEntry } from "@/types/citation";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -160,20 +160,14 @@ const Index = () => {
       return;
     }
 
-    const csv = Papa.unparse(allSavedData);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
+    const worksheet = XLSX.utils.json_to_sheet(allSavedData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Citations");
     
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${pdfFile?.name.replace('.pdf', '')}_citations.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    XLSX.writeFile(workbook, `${pdfFile?.name.replace('.pdf', '')}_citations.xlsx`);
 
     toast({
-      title: "CSV Downloaded",
+      title: "Excel Downloaded",
       description: `Downloaded ${allSavedData.length} total citations`,
     });
   }, [allSavedData, pdfFile, toast]);
@@ -263,7 +257,7 @@ const Index = () => {
                   className="gap-2"
                 >
                   <Download className="w-4 h-4" />
-                  Download CSV ({allSavedData.length})
+                  Download Excel ({allSavedData.length})
                 </Button>
               </>
             )}
