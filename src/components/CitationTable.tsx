@@ -63,7 +63,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Exhibits",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "Exhibits", e.target.value)
           }
@@ -75,7 +75,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Deponent",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "deponent", e.target.value)
           }
@@ -87,7 +87,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Date",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "date", e.target.value)
           }
@@ -99,7 +99,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Cites",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "cites", e.target.value)
           }
@@ -111,7 +111,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Bates Begin",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "BatesBegin", e.target.value)
           }
@@ -123,7 +123,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Bates End",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "BatesEnd", e.target.value)
           }
@@ -135,7 +135,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Pinpoint",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "Pinpoint", e.target.value)
           }
@@ -147,7 +147,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Code Lines",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "Code Lines", e.target.value)
           }
@@ -159,7 +159,7 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
       header: "Report Name",
       cell: (info) => (
         <Input
-          value={info.getValue()}
+          value={info.getValue() || ""}
           onChange={(e) =>
             handleCellEdit(info.row.index, "Report Name", e.target.value)
           }
@@ -167,19 +167,21 @@ export const CitationTable = ({ data, onDataChange }: CitationTableProps) => {
         />
       ),
     }),
-    columnHelper.accessor("Paragraph No.", {
+    {
+      id: "paragraphNo",
+      accessorFn: (row) => row["Paragraph No."],
       header: "Para. No.",
       cell: (info) => (
         <Input
           type="number"
-          value={info.getValue()}
+          value={info.getValue() || 0}
           onChange={(e) =>
             handleCellEdit(info.row.index, "Paragraph No.", e.target.value)
           }
           className="min-w-[100px]"
         />
       ),
-    }),
+    },
     columnHelper.display({
       id: "actions",
       header: "",
