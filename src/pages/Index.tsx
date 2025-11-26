@@ -25,6 +25,7 @@ const Index = () => {
   const [pageViewport, setPageViewport] = useState<any>(null);
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
   const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
+  const [fewShotExamples, setFewShotExamples] = useState<CitationEntry[]>([]);
   const { toast } = useToast();
 
   const currentData = pageData[pageNumber] || [];
@@ -96,21 +97,22 @@ const Index = () => {
         const pageImage = canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
 
         // Call backend for extraction
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              pageText,
-              pageImage,
-              pageNumber,
-              reportName: pdfFile.name,
-            }),
-          }
-        );
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                pageText,
+                pageImage,
+                pageNumber,
+                reportName: pdfFile.name,
+                fewShotExamples: fewShotExamples.slice(-5), // Send last 5 corrected examples
+              }),
+            }
+          );
 
         if (!response.ok) {
           throw new Error("Extraction failed");
@@ -198,7 +200,7 @@ const Index = () => {
           await page.render({ canvasContext: context, viewport }).promise;
           const pageImage = canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
 
-          const response = await fetch(
+           const response = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
             {
               method: "POST",
@@ -208,6 +210,7 @@ const Index = () => {
                 pageImage,
                 pageNumber: i,
                 reportName: pdfFile.name,
+                fewShotExamples: fewShotExamples.slice(-5),
               }),
             }
           );
@@ -418,6 +421,19 @@ const Index = () => {
                     }));
                   }}
                   onRowHover={setHoveredCitation}
+                  onCitationCorrected={(citation) => {
+                    setFewShotExamples(prev => {
+                      const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
+                      if (!exists) {
+                        toast({
+                          title: "Learning Example Added",
+                          description: "This correction will improve future extractions",
+                        });
+                        return [...prev, citation].slice(-10); // Keep last 10 examples
+                      }
+                      return prev;
+                    });
+                  }}
                 />
               )}
             </div>
