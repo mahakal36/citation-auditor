@@ -52,36 +52,126 @@ serve(async (req) => {
       }
     };
 
-    const systemPrompt = `You are an expert legal document analyst. Extract ALL citations from the provided document page.
+    const systemPrompt = `You are an expert legal document analyst. Your task is to extract **ALL** citations from the provided document page.
 
-**CRITICAL EXTRACTION RULES:**
+**INPUT DATA:** You have been provided with an **IMAGE** of the page AND the raw **TEXT** content extracted from that page.
+1. Use the **IMAGE** to understand the layout (footnotes vs body).
+2. Use the **TEXT** to ensure 100% character accuracy.
 
-1. **Report Name:** Fixed as '${reportName || REPORT_NAME_PLACEHOLDER}'.
-2. **Paragraph Numbering:** The Paragraph No. MUST refer to the paragraph number in the main body text where the footnote marker appears.
-3. **Default Values:** Unused fields MUST be 'nan'.
-4. **Splitting:** Create a separate row for every citation separated by semicolons (;).
+### CHAIN-OF-THOUGHT (CoT) - EXECUTE THIS FOR EVERY LINE:
+1. **Detect Splitters:** Does the line contain semicolons (;)? If yes, split the line into distinct parts immediately.
+2. **Analyze Mixed Footnotes:** Does a footnote contain BOTH text (e.g., "Conversation with...") AND Bates numbers?
+    - **CRITICAL:** You must separate them. Create ONE row for the Text (Exhibit) and SEPARATE rows for the Bates numbers.
+3. **Separate Metadata (Crucial):** - **For Exhibits/URLs/Treatises:** The \`Code Lines\` field is **ONLY** for the specific locator (e.g., "p. 14", "accessed August 16, 2024", "at 59").
+    - **EVERYTHING ELSE** (Title, Author, Source, URL) must be combined into the \`Exhibits\` field. Do not split the URL itself into Code Lines.
 
-**SCENARIO TYPES:**
+### CRITICAL EXTRACTION RULES:
 
-1. **Bates Number(s) with Pinpoint ('at'):**
-   - Input: "TOT00191801-16 at TOT00191805"
-   - BatesBegin: Start Bates
-   - BatesEnd: End Bates (or 'nan' if single)
-   - Pinpoint: Text/ID after 'at'
-   - Others: 'nan'
+1.  **Report Name:** Fixed as '${reportName || REPORT_NAME_PLACEHOLDER}'.
+2.  **Paragraph Numbering (CRITICAL):** The **Paragraph No.** column MUST refer to the **Paragraph Number in the main body text** (e.g., 73, 74, 75) where the footnote marker appears, **NOT** the footnote number (e.g., 86, 87).
+3.  **Default Values:** Unused fields MUST be 'nan'.
+4.  **Splitting:** You MUST create a separate row for *every* citation separated by a semicolon (;). **Do not ignore single Bates numbers found in a list.**
 
-2. **Deposition Citations:**
-   - Pattern: "Prashant Vashi Deposition (3/28/24) at 35:17-36:22"
-   - deponent: Name
-   - date: Date
-   - cites: Page/line cites
-   - Others: 'nan'
+---
+#### SCENARIO 1: Bates Number(s) with Pinpoint ('at')
+-   **Type:** BATES_PINPOINT.
+-   **Input:** "TOT00191801-16 at TOT00191805" OR "VZTOT0000022 at VZTOT0000040"
+-   **BatesBegin:** The start Bates.
+-   **BatesEnd:** The end Bates (or 'nan' if single).
+-   **Pinpoint:** The text/ID after 'at'.
+-   **Others:** 'nan'.
 
-3. **Exhibits/URLs/Treatises:**
-   - Code Lines: Only for specific locator (e.g., "p. 14", "accessed August 16, 2024")
-   - Exhibits: Everything else (Title, Author, Source, URL combined)
+#### SCENARIO 2: Bates Range OR Single Bates (No Pinpoint)
+-   **Type:** BATES_RANGE.
+-   **Input:** "TOT000189043" OR "TOT00189044-TOT00189059"
+-   **BatesBegin:** The start Bates (or the single Bates).
+-   **BatesEnd:** The end Bates (or 'nan' if single).
+-   **Others:** 'nan'.
 
-Use the IMAGE for layout understanding and TEXT for character accuracy.`;
+#### SCENARIO 3: Footnote Mixed Content (Text + Bates)
+-   **Type:** MIXED_FOOTNOTE.
+-   **Input:** "Conversation with X... see also TOT001-TOT005."
+-   **Action:** 1. Create Row 1: **Exhibits** = "Conversation with X...", Bates = 'nan'.
+    2. Create Row 2: **BatesBegin** = "TOT001", **BatesEnd** = "TOT005", Exhibits = 'nan'.
+
+#### SCENARIO 4: Code Lines
+-   **Type:** CODE_LINE.
+-   **Pattern:** APPLE_INTEL_000015 at lines 3258-3285
+-   **Pinpoint:** Bates ID.
+-   **Code Lines:** Line range.
+-   **Others:** 'nan'.
+
+#### SCENARIO 5: Transcript/Rough Tr. Citations
+-   **Type:** TRANSCRIPT.
+-   **Pattern:** Sebini.rough tr. at 23:21-25:1.
+-   **Exhibits:** Transcript name ("Sebini.rough tr.").
+-   **Code Lines:** Page/line numbers ("23:21-25:1").
+-   **Others:** 'nan'.
+
+#### SCENARIO 6: URL / Standard / Treatise / Webpage (STRICT SEPARATION)
+-   **Type:** NON_BATES_EXHIBIT.
+-   **Rule:** **\`Code Lines\` takes ONLY the Page/Date.** \`Exhibits\` takes EVERYTHING ELSE.
+-   **Input:** "Qualcomm Ventures website, https://www.qualcommventures.com/, accessed August 16, 2024."
+    -   **Exhibits:** "Qualcomm Ventures website, https://www.qualcommventures.com/"
+    -   **Code Lines:** "accessed August 16, 2024"
+-   **Input:** "Qualcomm Inc., Form 10-K for 2023, p. 14."
+    -   **Exhibits:** "Qualcomm Inc., Form 10-K for 2023"
+    -   **Code Lines:** "p. 14"
+-   **Others:** 'nan'.
+
+#### SCENARIO 7: Deposition Citations
+-   **Type:** DEPOSITION.
+-   **Pattern:** Prashant Vashi Deposition (3/28/24) at 35:17-36:22
+-   **deponent:** Name.
+-   **date:** Date.
+-   **cites:** Page/line cites.
+-   **Others:** 'nan'.
+
+#### SCENARIO 8: Footnote Conversation
+-   **Type:** FOOTNOTE EXHIBIT.
+-   **Input:** "Conversation with Dr. Larson on August 22, 2024"
+-   **Exhibits:** "Conversation with Dr. Larson on August 22, 2024"
+-   **Others:** 'nan'.
+
+---
+### FEW-SHOT EXAMPLE (Demonstrating Correct Paragraph Mapping, Separation, Splitting & Mixed Content):
+
+**Input Text (Simulated Main Text Mapping):**
+73. ... text ending with footnote marker ⁸⁸.
+74. ... text ending with footnote marker ⁹¹.
+88 Conversation with Alvaro Medrano, August 22, 2024. See also TOT00116811-TOT00116815.
+91 Conversation with Alvaro Medrano, August 22, 2024; Conversation with Miguel Blanco, August 23, 2024.
+
+**Output JSON:**
+[
+  {
+    "Exhibits": "Conversation with Alvaro Medrano, August 22, 2024",
+    "deponent": "nan", "date": "nan", "cites": "nan",
+    "BatesBegin": "nan", "BatesEnd": "nan", "Pinpoint": "nan",
+    "Code Lines": "nan",
+    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 73
+  },
+  {
+    "Exhibits": "nan", "deponent": "nan", "date": "nan", "cites": "nan",
+    "BatesBegin": "TOT00116811", "BatesEnd": "TOT00116815", "Pinpoint": "nan",
+    "Code Lines": "nan",
+    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 73
+  },
+  {
+    "Exhibits": "Conversation with Alvaro Medrano, August 22, 2024",
+    "deponent": "nan", "date": "nan", "cites": "nan",
+    "BatesBegin": "nan", "BatesEnd": "nan", "Pinpoint": "nan",
+    "Code Lines": "nan",
+    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 74
+  },
+  {
+    "Exhibits": "Conversation with Miguel Blanco, August 23, 2024",
+    "deponent": "nan", "date": "nan", "cites": "nan",
+    "BatesBegin": "nan", "BatesEnd": "nan", "Pinpoint": "nan",
+    "Code Lines": "nan",
+    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 74
+  }
+]`;
 
     // Step 1: Initial Extraction
     console.log('Step 1: Initial extraction...');
@@ -126,13 +216,15 @@ Use the IMAGE for layout understanding and TEXT for character accuracy.`;
 
     // Step 2: Validation
     console.log('Step 2: Validation...');
-    const validationPrompt = `You are a legal data extraction auditor. Validate and correct the extracted citations.
+    const validationPrompt = `You are a legal data extraction auditor. Your task is to rigorously validate and correct a previously extracted list of citations against the provided raw page content (text and image).
 
-**VALIDATION RULES:**
-1. Re-apply every rule from extraction (splitting, 'nan' defaults, Report/Paragraph mapping)
-2. Check for completeness - add any missing citations
-3. Verify accuracy of all fields
-4. Ensure data type conformance
+**CRITICAL RULES FOR AUDIT AND CORRECTION:**
+1.  **Strict Adherence to Rules:** Re-apply every rule from the original extraction prompt (especially for splitting, 'nan' defaults, and Report/Paragraph mapping).
+2.  **Completeness:** Check if any citations present in the raw text/image were missed in the JSON. If missing, add them.
+3.  **Accuracy:** Check if all fields (BatesBegin, BatesEnd, Pinpoint, Exhibits, Code Lines, etc.) are accurately transcribed from the source text and correctly categorized according to the provided schema.
+4.  **Data Type & Format:** Ensure the final JSON strictly conforms to the provided schema (e.g., 'Paragraph No.' must be an integer, 'nan' must be a string).
+
+**Your output MUST be a complete, correct, and valid JSON object conforming to the same schema.**
 
 Initial extraction result to validate:
 ${initialExtraction}`;

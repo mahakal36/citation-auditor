@@ -17,14 +17,17 @@ const Index = () => {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [currentData, setCurrentData] = useState<CitationEntry[]>([]);
+  const [pageData, setPageData] = useState<Record<number, CitationEntry[]>>({});
   const [allSavedData, setAllSavedData] = useState<CitationEntry[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [pageTextContent, setPageTextContent] = useState<any>(null);
   const [pageViewport, setPageViewport] = useState<any>(null);
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
   const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
   const { toast } = useToast();
+
+  const currentData = pageData[pageNumber] || [];
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -47,7 +50,7 @@ const Index = () => {
     if (file && file.type === "application/pdf") {
       setPdfFile(file);
       setPageNumber(1);
-      setCurrentData([]);
+      setPageData({});
       setAllSavedData([]);
     } else {
       toast({
@@ -114,7 +117,10 @@ const Index = () => {
         }
 
         const data = await response.json();
-        setCurrentData(data.citations || []);
+        setPageData(prev => ({
+          ...prev,
+          [pageNumber]: data.citations || []
+        }));
         
         toast({
           title: "Extraction Complete",
@@ -143,12 +149,94 @@ const Index = () => {
       return;
     }
 
-    setAllSavedData((prev) => [...prev, ...currentData]);
+    setAllSavedData((prev) => {
+      const existingFromPage = prev.filter(item => item["Paragraph No."] !== pageNumber);
+      return [...existingFromPage, ...currentData];
+    });
+    
     toast({
       title: "Data Saved",
       description: `Saved ${currentData.length} citations from page ${pageNumber}`,
     });
   }, [currentData, pageNumber, toast]);
+
+  const extractBatchPages = useCallback(async () => {
+    if (!pdfFile || numPages === 0) {
+      toast({
+        title: "No PDF",
+        description: "Please upload a PDF first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBatchProcessing(true);
+    const startPage = pageNumber;
+    const endPage = Math.min(pageNumber + 9, numPages);
+    
+    toast({
+      title: "Batch Processing",
+      description: `Processing pages ${startPage} to ${endPage}...`,
+    });
+
+    try {
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+      
+      for (let i = startPage; i <= endPage; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(" ");
+        
+        const viewport = page.getViewport({ scale: 3 });
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        if (context) {
+          await page.render({ canvasContext: context, viewport }).promise;
+          const pageImage = canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
+
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pageText,
+                pageImage,
+                pageNumber: i,
+                reportName: pdfFile.name,
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            setPageData(prev => ({
+              ...prev,
+              [i]: data.citations || []
+            }));
+          }
+        }
+      }
+      
+      toast({
+        title: "Batch Complete",
+        description: `Processed pages ${startPage} to ${endPage}`,
+      });
+    } catch (error) {
+      console.error("Batch processing error:", error);
+      toast({
+        title: "Batch Processing Failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  }, [pdfFile, pageNumber, numPages, toast]);
 
   const handleDownloadCSV = useCallback(() => {
     if (allSavedData.length === 0) {
@@ -235,11 +323,21 @@ const Index = () => {
 
                 <Button
                   onClick={extractPageData}
-                  disabled={isExtracting}
+                  disabled={isExtracting || isBatchProcessing}
                   className="gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {isExtracting ? "Extracting..." : "Extract & Validate"}
+                  {isExtracting ? "Extracting..." : "Extract Page"}
+                </Button>
+
+                <Button
+                  onClick={extractBatchPages}
+                  disabled={isExtracting || isBatchProcessing}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {isBatchProcessing ? "Processing..." : "Extract 10 Pages"}
                 </Button>
 
                 <Button
@@ -308,12 +406,17 @@ const Index = () => {
               {currentData.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Press "Extract & Validate" to begin</p>
+                  <p>Press "Extract Page" or "Extract 10 Pages" to begin</p>
                 </div>
               ) : (
                 <CitationTable
                   data={currentData}
-                  onDataChange={setCurrentData}
+                  onDataChange={(newData) => {
+                    setPageData(prev => ({
+                      ...prev,
+                      [pageNumber]: newData
+                    }));
+                  }}
                   onRowHover={setHoveredCitation}
                 />
               )}
