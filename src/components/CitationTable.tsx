@@ -38,6 +38,19 @@ export const CitationTable = ({ data, onDataChange, onRowHover }: CitationTableP
     onDataChange(newData);
   };
 
+  const renderEditableCell = (info: any, columnId: string) => {
+    const isNumber = columnId === "Paragraph No.";
+    return (
+      <Input
+        key={`${info.row.index}-${columnId}`}
+        type={isNumber ? "number" : "text"}
+        defaultValue={info.getValue() || (isNumber ? 0 : "")}
+        onBlur={(e) => handleCellEdit(info.row.index, columnId, e.target.value)}
+        className={columnId === "Exhibits" || columnId === "Report Name" ? "min-w-[200px]" : "min-w-[120px]"}
+      />
+    );
+  };
+
   const handleAddRow = () => {
     const emptyRow: CitationEntry = {
       Exhibits: "nan",
@@ -62,126 +75,45 @@ export const CitationTable = ({ data, onDataChange, onRowHover }: CitationTableP
   const columns: ColumnDef<CitationEntry, any>[] = [
     columnHelper.accessor("Exhibits", {
       header: "Exhibits",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "Exhibits", e.target.value)
-          }
-          className="min-w-[200px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "Exhibits"),
     }),
     columnHelper.accessor("deponent", {
       header: "Deponent",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "deponent", e.target.value)
-          }
-          className="min-w-[150px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "deponent"),
     }),
     columnHelper.accessor("date", {
       header: "Date",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "date", e.target.value)
-          }
-          className="min-w-[120px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "date"),
     }),
     columnHelper.accessor("cites", {
       header: "Cites",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "cites", e.target.value)
-          }
-          className="min-w-[120px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "cites"),
     }),
     columnHelper.accessor("BatesBegin", {
       header: "Bates Begin",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "BatesBegin", e.target.value)
-          }
-          className="min-w-[150px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "BatesBegin"),
     }),
     columnHelper.accessor("BatesEnd", {
       header: "Bates End",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "BatesEnd", e.target.value)
-          }
-          className="min-w-[150px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "BatesEnd"),
     }),
     columnHelper.accessor("Pinpoint", {
       header: "Pinpoint",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "Pinpoint", e.target.value)
-          }
-          className="min-w-[120px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "Pinpoint"),
     }),
     columnHelper.accessor("Code Lines", {
       header: "Code Lines",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "Code Lines", e.target.value)
-          }
-          className="min-w-[120px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "Code Lines"),
     }),
     columnHelper.accessor("Report Name", {
       header: "Report Name",
-      cell: (info) => (
-        <Input
-          value={info.getValue() || ""}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "Report Name", e.target.value)
-          }
-          className="min-w-[200px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "Report Name"),
     }),
     {
       id: "paragraphNo",
       accessorFn: (row) => row["Paragraph No."],
       header: "Para. No.",
-      cell: (info) => (
-        <Input
-          type="number"
-          value={info.getValue() || 0}
-          onChange={(e) =>
-            handleCellEdit(info.row.index, "Paragraph No.", e.target.value)
-          }
-          className="min-w-[100px]"
-        />
-      ),
+      cell: (info) => renderEditableCell(info, "Paragraph No."),
     },
     columnHelper.display({
       id: "actions",
