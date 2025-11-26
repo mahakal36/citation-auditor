@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { pageText, pageImage, pageNumber, reportName } = await req.json();
+    const { pageText, pageImage, pageNumber, reportName, fewShotExamples = [] } = await req.json();
     
     console.log(`Processing page ${pageNumber} for report: ${reportName}`);
 
@@ -51,6 +51,12 @@ serve(async (req) => {
         }
       }
     };
+
+    // Build few-shot examples section if available
+    let fewShotSection = "";
+    if (fewShotExamples && fewShotExamples.length > 0) {
+      fewShotSection = `\n\n### ADDITIONAL FEW-SHOT EXAMPLES FROM MANUALLY CORRECTED DATA:\nThese are examples of correctly extracted citations from this document. Learn from these patterns:\n\n${JSON.stringify(fewShotExamples, null, 2)}\n\nApply the same extraction patterns and accuracy standards shown in these examples.`;
+    }
 
     const systemPrompt = `You are an expert legal document analyst. Your task is to extract **ALL** citations from the provided document page.
 
@@ -171,7 +177,7 @@ serve(async (req) => {
     "Code Lines": "nan",
     "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 74
   }
-]`;
+]${fewShotSection}`;
 
     // Step 1: Initial Extraction
     console.log('Step 1: Initial extraction...');
