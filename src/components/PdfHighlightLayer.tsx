@@ -35,40 +35,76 @@ export const PdfHighlightLayer = ({
     if (!textContent || !viewport) return;
 
     const newHighlights: Highlight[] = [];
-
-    // Extract all text items with their positions
     const textItems = textContent.items;
 
+    // Normalize text for better matching
+    const normalizeText = (text: string) => {
+      return text
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^\w\s\-]/g, '')
+        .trim();
+    };
+
     citations.forEach((citation, citationIndex) => {
-      // Try to find citation text in the PDF
       const searchTexts = [
         citation.Exhibits,
         citation.deponent,
         citation.BatesBegin,
         citation.BatesEnd,
         citation.Pinpoint,
+        citation["Code Lines"],
+        citation.cites,
       ].filter((text) => text && text !== "nan" && text.length > 3);
 
       searchTexts.forEach((searchText) => {
-        for (let i = 0; i < textItems.length; i++) {
-          const item = textItems[i];
-          const itemText = item.str.toLowerCase();
+        const normalizedSearch = normalizeText(searchText);
+        const searchWords = normalizedSearch.split(' ').filter(w => w.length > 2);
+        
+        // Try to find consecutive text items that form the search string
+        for (let startIdx = 0; startIdx < textItems.length; startIdx++) {
+          let combinedText = '';
+          let matchedItems: any[] = [];
           
-          if (itemText.includes(searchText.toLowerCase())) {
-            const transform = item.transform;
-            const x = transform[4];
-            const y = transform[5];
-            const height = Math.sqrt(transform[2] * transform[2] + transform[3] * transform[3]);
-            const width = item.width;
-
-            newHighlights.push({
-              left: x,
-              top: pageHeight - y - height,
-              width: width,
-              height: height,
-              citationIndex,
-              text: searchText,
-            });
+          // Look ahead to combine multiple text items (up to 10 items)
+          for (let endIdx = startIdx; endIdx < Math.min(startIdx + 10, textItems.length); endIdx++) {
+            const item = textItems[endIdx];
+            if (!item.str) continue;
+            
+            combinedText += ' ' + item.str;
+            matchedItems.push(item);
+            
+            const normalizedCombined = normalizeText(combinedText);
+            
+            // Check if we have a match (either exact or all words present)
+            if (normalizedCombined.includes(normalizedSearch) || 
+                (searchWords.length > 1 && searchWords.every(word => normalizedCombined.includes(word)))) {
+              
+              // Calculate bounding box for all matched items
+              const transforms = matchedItems.map(i => i.transform);
+              const xs = transforms.map(t => t[4]);
+              const ys = transforms.map(t => t[5]);
+              const widths = matchedItems.map(i => i.width || 100);
+              const heights = matchedItems.map((i, idx) => 
+                Math.sqrt(transforms[idx][2] * transforms[idx][2] + transforms[idx][3] * transforms[idx][3])
+              );
+              
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs.map((x, i) => x + widths[i]));
+              const minY = Math.min(...ys);
+              const maxHeight = Math.max(...heights);
+              
+              newHighlights.push({
+                left: minX,
+                top: pageHeight - minY - maxHeight,
+                width: maxX - minX,
+                height: maxHeight,
+                citationIndex,
+                text: searchText,
+              });
+              
+              break; // Found match, stop looking for this search text
+            }
           }
         }
       });
