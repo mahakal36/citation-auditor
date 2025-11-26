@@ -15,11 +15,12 @@ interface CitationTableProps {
   data: CitationEntry[];
   onDataChange: (data: CitationEntry[]) => void;
   onRowHover?: (rowIndex: number | null) => void;
+  onCitationCorrected?: (citation: CitationEntry) => void;
 }
 
 const columnHelper = createColumnHelper<CitationEntry>();
 
-export const CitationTable = ({ data, onDataChange, onRowHover }: CitationTableProps) => {
+export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrected }: CitationTableProps) => {
   const [editingCell, setEditingCell] = useState<{
     rowIndex: number;
     columnId: string;
@@ -36,6 +37,11 @@ export const CitationTable = ({ data, onDataChange, onRowHover }: CitationTableP
     }
     
     onDataChange(newData);
+    
+    // Track manual correction for few-shot learning
+    if (onCitationCorrected) {
+      onCitationCorrected(newData[rowIndex]);
+    }
   };
 
   const renderEditableCell = (info: any, columnId: string) => {
