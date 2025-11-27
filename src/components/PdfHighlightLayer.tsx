@@ -48,8 +48,8 @@ export const PdfHighlightLayer = ({
 
     citations.forEach((citation, citationIndex) => {
       const searchTexts = [
-        citation.Exhibits,
-        citation.deponent,
+        citation["Non-Bates Exhibits"],
+        citation.Depositions,
         citation.BatesBegin,
         citation.BatesEnd,
         citation.Pinpoint,
