@@ -26,6 +26,7 @@ const Index = () => {
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
   const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
   const [fewShotExamples, setFewShotExamples] = useState<CitationEntry[]>([]);
+  const [pageInputValue, setPageInputValue] = useState("");
   const { toast } = useToast();
 
   const currentData = pageData[pageNumber] || [];
@@ -263,6 +264,32 @@ const Index = () => {
     });
   }, [allSavedData, pdfFile, toast]);
 
+  const handlePageJump = () => {
+    const pageNum = parseInt(pageInputValue);
+    if (pageNum >= 1 && pageNum <= numPages) {
+      setPageNumber(pageNum);
+      setPageInputValue("");
+    } else {
+      toast({
+        title: "Invalid Page",
+        description: `Please enter a page number between 1 and ${numPages}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeletePageData = (page: number) => {
+    setPageData(prev => {
+      const updated = { ...prev };
+      delete updated[page];
+      return updated;
+    });
+    toast({
+      title: "Table Deleted",
+      description: `Deleted citations table for page ${page}`,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
       <div className="container mx-auto p-6 max-w-[1800px]">
@@ -321,6 +348,26 @@ const Index = () => {
                     disabled={pageNumber >= numPages}
                   >
                     <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Jump to page"
+                    value={pageInputValue}
+                    onChange={(e) => setPageInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handlePageJump()}
+                    className="w-32"
+                    min={1}
+                    max={numPages}
+                  />
+                  <Button 
+                    onClick={handlePageJump} 
+                    disabled={!pageInputValue}
+                    variant="secondary"
+                  >
+                    Go
                   </Button>
                 </div>
 
@@ -436,6 +483,52 @@ const Index = () => {
                   }}
                 />
               )}
+            </div>
+          </div>
+        )}
+
+        {/* All Extracted Pages Tables */}
+        {pdfFile && Object.keys(pageData).length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold mb-6">All Extracted Citations</h2>
+            <div className="space-y-6">
+              {Object.entries(pageData)
+                .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                .map(([page, data]) => (
+                  <div key={page} className="bg-card rounded-lg border shadow-sm p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">
+                        Page {page} Citations ({data.length})
+                      </h3>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeletePageData(parseInt(page))}
+                      >
+                        Delete Table
+                      </Button>
+                    </div>
+                    <CitationTable
+                      data={data}
+                      onDataChange={(newData) => {
+                        setPageData(prev => ({
+                          ...prev,
+                          [parseInt(page)]: newData
+                        }));
+                      }}
+                      onRowHover={setHoveredCitation}
+                      onCitationCorrected={(citation) => {
+                        setFewShotExamples(prev => {
+                          const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
+                          if (!exists) {
+                            return [...prev, citation].slice(-10);
+                          }
+                          return prev;
+                        });
+                      }}
+                    />
+                  </div>
+                ))}
             </div>
           </div>
         )}

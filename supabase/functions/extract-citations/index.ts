@@ -32,14 +32,14 @@ serve(async (req) => {
               items: {
                 type: "object",
                 properties: {
-                  "Non-Bates Exhibits": { type: "string", description: "Full title, source, and URL of non-Bates exhibit. 'nan' if not applicable." },
-                  "Depositions": { type: "string", description: "Name of the deponent. Use 'nan' otherwise." },
-                  date: { type: "string", description: "Date of the deposition. Use 'nan' otherwise." },
-                  cites: { type: "string", description: "Page and line numbers for deposition. Use 'nan' otherwise." },
-                  BatesBegin: { type: "string", description: "Starting Bates number or single Bates. Use 'nan' otherwise." },
-                  BatesEnd: { type: "string", description: "Ending Bates number of range. Use 'nan' otherwise." },
-                  Pinpoint: { type: "string", description: "Specific reference/page number after 'at'. Use 'nan' otherwise." },
-                  "Code Lines": { type: "string", description: "Specific page number, section, or access date. Use 'nan' otherwise." },
+                  "Non-Bates Exhibits": { type: "string", description: "Full title, source, and URL of non-Bates exhibit. Blank string if not applicable." },
+                  "Depositions": { type: "string", description: "Name of the deponent. Use blank string otherwise." },
+                  date: { type: "string", description: "Date of the deposition (capitalize first letter). Use blank string otherwise." },
+                  cites: { type: "string", description: "Page and line numbers for deposition (capitalize first letter). Use blank string otherwise." },
+                  BatesBegin: { type: "string", description: "Starting Bates number or single Bates. Use blank string otherwise." },
+                  BatesEnd: { type: "string", description: "Ending Bates number of range. Use blank string otherwise." },
+                  Pinpoint: { type: "string", description: "Specific reference/page number after 'at'. Use blank string otherwise." },
+                  "Code Lines": { type: "string", description: "Specific page number, section, or access date. Use blank string otherwise." },
                   "Report Name": { type: "string", description: "The file name." },
                   "Paragraph No.": { type: "integer", description: "Paragraph number from main body text." }
                 },
@@ -69,17 +69,16 @@ serve(async (req) => {
     }
 
     const systemPrompt = `You analyze legal document pages and extract citations into JSON.
-You may receive either:
+Input may contain:
 • ONE PAGE at a time
-• A BATCH of pages (up to 10) formatted like this:
+• OR a BATCH of pages (up to 10) formatted as:
 --- PAGE 1 ---
 {text or image}
 --- PAGE 2 ---
 {text or image}
---- PAGE 3 ---
 ...
 
-The input format will always show clear page separators if multiple pages are provided.
+Always treat pages as separate unless continuity rules apply.
 
 ────────────────────────────────────────────────────
 GENERAL EXTRACTION RULES
@@ -91,11 +90,15 @@ Use the correct Paragraph Number. Never guess.
 
 Use ONLY the required field names.
 
-Every unused field must be "nan".
+If a field is empty, use "" (blank), not "nan".
 
 Use terminology EXACTLY as follows:
 • "Depositions" instead of "Deponent"
 • "Non-Bates Exhibits" instead of "Exhibits"
+
+If a row contains ALL blank fields → do NOT include that row in the JSON.
+
+Date and Cites columns: first letter must be capitalized.
 
 Report Name is FIXED as: ${reportName || REPORT_NAME_PLACEHOLDER}
 
@@ -103,45 +106,52 @@ Report Name is FIXED as: ${reportName || REPORT_NAME_PLACEHOLDER}
 ASSERTED PATENT RULE
 ────────────────────────────────────────────────────
 If the page(s) mention asserted patents or patents-in-suit:
-• Write ONE SENTENCE confirming their presence in the memory section.
+• Write ONE SENTENCE confirming their presence.
 • DO NOT extract individual patent numbers.
+• DO NOT extract pinpoint cites related to asserted patents.
+• If additional information appears with the patent number (e.g., "U.S. Patent No. 7,532,865 at 1:45–50") → do not extract that citation at all.
+
+────────────────────────────────────────────────────
+TABLE OF CONTENTS RULE
+────────────────────────────────────────────────────
+When a TOC page is encountered:
+• Confirm whether asserted patents or patents-in-suit are present.
+• No extraction should occur for TOC pages.
 
 ────────────────────────────────────────────────────
 PARAGRAPH CONTINUITY BETWEEN PAGES
 ────────────────────────────────────────────────────
 If the current page begins mid-sentence or without a new paragraph number:
-• Refer to the previous page (or previous section of the batch).
-• Use the last full paragraph number from the previous page.
-• Stop using this rule once a new paragraph number appears.
+• Refer to the last full paragraph number from the previous page.
+• Use that number until a new paragraph number appears.
 
 Example:
-Page 10 ends with:
-"…therefore, Apple engaged in the following conduct¹⁰³"
-Page 11 begins with:
-"…that continued through 2022 and resulted in…"
-→ Citation ¹⁰³ must map to the last paragraph number from Page 10.
+Page 10 ends with: "…therefore, Apple engaged in the following conduct¹⁰³"
+Page 11 begins with: "…that continued through 2022 and resulted in…"
+→ Citation ¹⁰³ maps to the last paragraph number from Page 10.
 
 ────────────────────────────────────────────────────
-EXHIBIT CONTINUITY ACROSS MULTIPLE PAGES
+"Id." HANDLING RULE
+────────────────────────────────────────────────────
+When "Id." or "id" appears (like "20 Id" or "Id."):
+• Locate the paragraph associated with reference number 20.
+• Use the immediately preceding reference as the exhibit.
+• If that preceding reference is also "Id.", go further back to the last non-Id reference.
+
+────────────────────────────────────────────────────
+EXHIBIT CONTINUITY BETWEEN PAGES
 ────────────────────────────────────────────────────
 If only part of a Non-Bates Exhibit is visible:
-• Clearly state in memory: "Partially visible – may continue from previous or next page."
-• Continue tracking if the exhibit reappears later.
-• Always label as "Non-Bates Exhibits" (never just "Exhibits").
+• Mark as: "Partially visible – may continue from previous or next page."
+• Continue tracking if it reappears later.
+• Always label as "Non-Bates Exhibits".
 
 ────────────────────────────────────────────────────
-HANDLING PARTIAL EXHIBITS & PAGE ENDINGS
+HIGHLIGHTING RULES
 ────────────────────────────────────────────────────
-If the page cuts off an exhibit or paragraph due to reaching the end of the page:
-• Recognize that the exhibit or paragraph may continue from the previous page or onto the next.
-• Document this in the JSON "memory" section.
-
-────────────────────────────────────────────────────
-TABLE OF CONTENTS RULE
-────────────────────────────────────────────────────
-If a Table of Contents page is present:
-• Check whether asserted patents appear in this TOC.
-• Confirm their presence in memory but DO NOT extract specific patent numbers.
+• Only highlight once for each unique relevant sentence.
+• If a sentence appears multiple times, highlight only one instance.
+• Highlight must be lightly faded and aligned precisely to text.
 
 ────────────────────────────────────────────────────
 SPLITTING RULES
@@ -217,9 +227,34 @@ ${fewShotExamples && fewShotExamples.length > 0 ?
   'No correction examples yet.'}
 
 ────────────────────────────────────────────────────
-OUTPUT FORMAT
+REQUIRED JSON OUTPUT FORMAT
 ────────────────────────────────────────────────────
-Return ONLY valid JSON. No markdown or explanations.`;
+Return ONLY valid JSON:
+
+{
+  "citations": [
+    {
+      "Non-Bates Exhibits": "",
+      "Depositions": "",
+      "date": "",
+      "cites": "",
+      "BatesBegin": "",
+      "BatesEnd": "",
+      "Pinpoint": "",
+      "Code Lines": "",
+      "Report Name": "",
+      "Paragraph No.": <integer>
+    }
+  ],
+  "memory": {
+    "last_paragraph_number_used": <integer or null>,
+    "incomplete_exhibit_detected": true/false,
+    "raw_text": "<exact raw text of current page or last page in batch>",
+    "last_page_processed": <integer>
+  }
+}
+
+Only return JSON. No explanations or markdown.`;
 
     // Step 1: Initial Extraction
     console.log('Step 1: Initial extraction...');
@@ -270,8 +305,9 @@ Return ONLY valid JSON. No markdown or explanations.`;
 1.  **Strict Adherence to Rules:** Re-apply every rule from the original extraction prompt (especially terminology: "Depositions" not "deponent", "Non-Bates Exhibits" not "Exhibits").
 2.  **Completeness:** Check if any citations present in the raw text/image were missed in the JSON. If missing, add them.
 3.  **Accuracy:** Verify all fields (BatesBegin, BatesEnd, Pinpoint, Non-Bates Exhibits, Code Lines, etc.) are accurately transcribed and correctly categorized.
-4.  **Data Type & Format:** Ensure the final JSON strictly conforms to the schema (e.g., 'Paragraph No.' must be integer, 'nan' must be string).
+4.  **Data Type & Format:** Ensure the final JSON strictly conforms to the schema (e.g., 'Paragraph No.' must be integer, empty fields must be "" not "nan").
 5.  **Memory Section:** Validate the memory section includes last_paragraph_number_used, incomplete_exhibit_detected, raw_text, and last_page_processed.
+6.  **Remove Empty Rows:** If a row contains ALL blank fields, do NOT include it in the output.
 
 **Your output MUST be a complete, correct, and valid JSON object conforming to the same schema.**
 
