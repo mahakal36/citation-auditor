@@ -52,15 +52,15 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
         type={isNumber ? "number" : "text"}
         defaultValue={info.getValue() || (isNumber ? 0 : "")}
         onBlur={(e) => handleCellEdit(info.row.index, columnId, e.target.value)}
-        className={columnId === "Exhibits" || columnId === "Report Name" ? "min-w-[200px]" : "min-w-[120px]"}
+        className={columnId === "Non-Bates Exhibits" || columnId === "Report Name" ? "min-w-[200px]" : "min-w-[120px]"}
       />
     );
   };
 
   const handleAddRow = () => {
     const emptyRow: CitationEntry = {
-      Exhibits: "nan",
-      deponent: "nan",
+      "Non-Bates Exhibits": "nan",
+      Depositions: "nan",
       date: "nan",
       cites: "nan",
       BatesBegin: "nan",
@@ -79,13 +79,13 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
   };
 
   const columns: ColumnDef<CitationEntry, any>[] = [
-    columnHelper.accessor("Exhibits", {
-      header: "Exhibits",
-      cell: (info) => renderEditableCell(info, "Exhibits"),
+    columnHelper.accessor("Non-Bates Exhibits", {
+      header: "Non-Bates Exhibits",
+      cell: (info) => renderEditableCell(info, "Non-Bates Exhibits"),
     }),
-    columnHelper.accessor("deponent", {
-      header: "Deponent",
-      cell: (info) => renderEditableCell(info, "deponent"),
+    columnHelper.accessor("Depositions", {
+      header: "Depositions",
+      cell: (info) => renderEditableCell(info, "Depositions"),
     }),
     columnHelper.accessor("date", {
       header: "Date",

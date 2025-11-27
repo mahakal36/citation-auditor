@@ -32,8 +32,8 @@ serve(async (req) => {
               items: {
                 type: "object",
                 properties: {
-                  Exhibits: { type: "string", description: "Full title, source, and URL of non-Bates exhibit. 'nan' if not applicable." },
-                  deponent: { type: "string", description: "Name of the deponent. Use 'nan' otherwise." },
+                  "Non-Bates Exhibits": { type: "string", description: "Full title, source, and URL of non-Bates exhibit. 'nan' if not applicable." },
+                  "Depositions": { type: "string", description: "Name of the deponent. Use 'nan' otherwise." },
                   date: { type: "string", description: "Date of the deposition. Use 'nan' otherwise." },
                   cites: { type: "string", description: "Page and line numbers for deposition. Use 'nan' otherwise." },
                   BatesBegin: { type: "string", description: "Starting Bates number or single Bates. Use 'nan' otherwise." },
@@ -43,11 +43,21 @@ serve(async (req) => {
                   "Report Name": { type: "string", description: "The file name." },
                   "Paragraph No.": { type: "integer", description: "Paragraph number from main body text." }
                 },
-                required: ["Exhibits", "deponent", "date", "cites", "BatesBegin", "BatesEnd", "Pinpoint", "Code Lines", "Report Name", "Paragraph No."]
+                required: ["Non-Bates Exhibits", "Depositions", "date", "cites", "BatesBegin", "BatesEnd", "Pinpoint", "Code Lines", "Report Name", "Paragraph No."]
               }
+            },
+            memory: {
+              type: "object",
+              properties: {
+                last_paragraph_number_used: { type: ["integer", "null"], description: "Last paragraph number used in extraction" },
+                incomplete_exhibit_detected: { type: "boolean", description: "Whether an incomplete exhibit was detected" },
+                raw_text: { type: "string", description: "Raw text of current or last page processed" },
+                last_page_processed: { type: "integer", description: "Last page number processed" }
+              },
+              required: ["last_paragraph_number_used", "incomplete_exhibit_detected", "raw_text", "last_page_processed"]
             }
           },
-          required: ["citations"]
+          required: ["citations", "memory"]
         }
       }
     };
@@ -58,126 +68,158 @@ serve(async (req) => {
       fewShotSection = `\n\n### ADDITIONAL FEW-SHOT EXAMPLES FROM MANUALLY CORRECTED DATA:\nThese are examples of correctly extracted citations from this document. Learn from these patterns:\n\n${JSON.stringify(fewShotExamples, null, 2)}\n\nApply the same extraction patterns and accuracy standards shown in these examples.`;
     }
 
-    const systemPrompt = `You are an expert legal document analyst. Your task is to extract **ALL** citations from the provided document page.
+    const systemPrompt = `You analyze legal document pages and extract citations into JSON.
+You may receive either:
+• ONE PAGE at a time
+• A BATCH of pages (up to 10) formatted like this:
+--- PAGE 1 ---
+{text or image}
+--- PAGE 2 ---
+{text or image}
+--- PAGE 3 ---
+...
 
-**INPUT DATA:** You have been provided with an **IMAGE** of the page AND the raw **TEXT** content extracted from that page.
-1. Use the **IMAGE** to understand the layout (footnotes vs body).
-2. Use the **TEXT** to ensure 100% character accuracy.
+The input format will always show clear page separators if multiple pages are provided.
 
-### CHAIN-OF-THOUGHT (CoT) - EXECUTE THIS FOR EVERY LINE:
-1. **Detect Splitters:** Does the line contain semicolons (;)? If yes, split the line into distinct parts immediately.
-2. **Analyze Mixed Footnotes:** Does a footnote contain BOTH text (e.g., "Conversation with...") AND Bates numbers?
-    - **CRITICAL:** You must separate them. Create ONE row for the Text (Exhibit) and SEPARATE rows for the Bates numbers.
-3. **Separate Metadata (Crucial):** - **For Exhibits/URLs/Treatises:** The \`Code Lines\` field is **ONLY** for the specific locator (e.g., "p. 14", "accessed August 16, 2024", "at 59").
-    - **EVERYTHING ELSE** (Title, Author, Source, URL) must be combined into the \`Exhibits\` field. Do not split the URL itself into Code Lines.
+────────────────────────────────────────────────────
+GENERAL EXTRACTION RULES
+────────────────────────────────────────────────────
 
-### CRITICAL EXTRACTION RULES:
+Extract ALL citations according to the JSON schema below.
 
-1.  **Report Name:** Fixed as '${reportName || REPORT_NAME_PLACEHOLDER}'.
-2.  **Paragraph Numbering (CRITICAL):** The **Paragraph No.** column MUST refer to the **Paragraph Number in the main body text** (e.g., 73, 74, 75) where the footnote marker appears, **NOT** the footnote number (e.g., 86, 87).
-3.  **Default Values:** Unused fields MUST be 'nan'.
-4.  **Splitting:** You MUST create a separate row for *every* citation separated by a semicolon (;). **Do not ignore single Bates numbers found in a list.**
+Use the correct Paragraph Number. Never guess.
 
----
-#### SCENARIO 1: Bates Number(s) with Pinpoint ('at')
--   **Type:** BATES_PINPOINT.
--   **Input:** "TOT00191801-16 at TOT00191805" OR "VZTOT0000022 at VZTOT0000040"
--   **BatesBegin:** The start Bates.
--   **BatesEnd:** The end Bates (or 'nan' if single).
--   **Pinpoint:** The text/ID after 'at'.
--   **Others:** 'nan'.
+Use ONLY the required field names.
 
-#### SCENARIO 2: Bates Range OR Single Bates (No Pinpoint)
--   **Type:** BATES_RANGE.
--   **Input:** "TOT000189043" OR "TOT00189044-TOT00189059"
--   **BatesBegin:** The start Bates (or the single Bates).
--   **BatesEnd:** The end Bates (or 'nan' if single).
--   **Others:** 'nan'.
+Every unused field must be "nan".
 
-#### SCENARIO 3: Footnote Mixed Content (Text + Bates)
--   **Type:** MIXED_FOOTNOTE.
--   **Input:** "Conversation with X... see also TOT001-TOT005."
--   **Action:** 1. Create Row 1: **Exhibits** = "Conversation with X...", Bates = 'nan'.
-    2. Create Row 2: **BatesBegin** = "TOT001", **BatesEnd** = "TOT005", Exhibits = 'nan'.
+Use terminology EXACTLY as follows:
+• "Depositions" instead of "Deponent"
+• "Non-Bates Exhibits" instead of "Exhibits"
 
-#### SCENARIO 4: Code Lines
--   **Type:** CODE_LINE.
--   **Pattern:** APPLE_INTEL_000015 at lines 3258-3285
--   **Pinpoint:** Bates ID.
--   **Code Lines:** Line range.
--   **Others:** 'nan'.
+Report Name is FIXED as: ${reportName || REPORT_NAME_PLACEHOLDER}
 
-#### SCENARIO 5: Transcript/Rough Tr. Citations
--   **Type:** TRANSCRIPT.
--   **Pattern:** Sebini.rough tr. at 23:21-25:1.
--   **Exhibits:** Transcript name ("Sebini.rough tr.").
--   **Code Lines:** Page/line numbers ("23:21-25:1").
--   **Others:** 'nan'.
+────────────────────────────────────────────────────
+ASSERTED PATENT RULE
+────────────────────────────────────────────────────
+If the page(s) mention asserted patents or patents-in-suit:
+• Write ONE SENTENCE confirming their presence in the memory section.
+• DO NOT extract individual patent numbers.
 
-#### SCENARIO 6: URL / Standard / Treatise / Webpage (STRICT SEPARATION)
--   **Type:** NON_BATES_EXHIBIT.
--   **Rule:** **\`Code Lines\` takes ONLY the Page/Date.** \`Exhibits\` takes EVERYTHING ELSE.
--   **Input:** "Qualcomm Ventures website, https://www.qualcommventures.com/, accessed August 16, 2024."
-    -   **Exhibits:** "Qualcomm Ventures website, https://www.qualcommventures.com/"
-    -   **Code Lines:** "accessed August 16, 2024"
--   **Input:** "Qualcomm Inc., Form 10-K for 2023, p. 14."
-    -   **Exhibits:** "Qualcomm Inc., Form 10-K for 2023"
-    -   **Code Lines:** "p. 14"
--   **Others:** 'nan'.
+────────────────────────────────────────────────────
+PARAGRAPH CONTINUITY BETWEEN PAGES
+────────────────────────────────────────────────────
+If the current page begins mid-sentence or without a new paragraph number:
+• Refer to the previous page (or previous section of the batch).
+• Use the last full paragraph number from the previous page.
+• Stop using this rule once a new paragraph number appears.
 
-#### SCENARIO 7: Deposition Citations
--   **Type:** DEPOSITION.
--   **Pattern:** Prashant Vashi Deposition (3/28/24) at 35:17-36:22
--   **deponent:** Name.
--   **date:** Date.
--   **cites:** Page/line cites.
--   **Others:** 'nan'.
+Example:
+Page 10 ends with:
+"…therefore, Apple engaged in the following conduct¹⁰³"
+Page 11 begins with:
+"…that continued through 2022 and resulted in…"
+→ Citation ¹⁰³ must map to the last paragraph number from Page 10.
 
-#### SCENARIO 8: Footnote Conversation
--   **Type:** FOOTNOTE EXHIBIT.
--   **Input:** "Conversation with Dr. Larson on August 22, 2024"
--   **Exhibits:** "Conversation with Dr. Larson on August 22, 2024"
--   **Others:** 'nan'.
+────────────────────────────────────────────────────
+EXHIBIT CONTINUITY ACROSS MULTIPLE PAGES
+────────────────────────────────────────────────────
+If only part of a Non-Bates Exhibit is visible:
+• Clearly state in memory: "Partially visible – may continue from previous or next page."
+• Continue tracking if the exhibit reappears later.
+• Always label as "Non-Bates Exhibits" (never just "Exhibits").
 
----
-### FEW-SHOT EXAMPLE (Demonstrating Correct Paragraph Mapping, Separation, Splitting & Mixed Content):
+────────────────────────────────────────────────────
+HANDLING PARTIAL EXHIBITS & PAGE ENDINGS
+────────────────────────────────────────────────────
+If the page cuts off an exhibit or paragraph due to reaching the end of the page:
+• Recognize that the exhibit or paragraph may continue from the previous page or onto the next.
+• Document this in the JSON "memory" section.
 
-**Input Text (Simulated Main Text Mapping):**
-73. ... text ending with footnote marker ⁸⁸.
-74. ... text ending with footnote marker ⁹¹.
-88 Conversation with Alvaro Medrano, August 22, 2024. See also TOT00116811-TOT00116815.
-91 Conversation with Alvaro Medrano, August 22, 2024; Conversation with Miguel Blanco, August 23, 2024.
+────────────────────────────────────────────────────
+TABLE OF CONTENTS RULE
+────────────────────────────────────────────────────
+If a Table of Contents page is present:
+• Check whether asserted patents appear in this TOC.
+• Confirm their presence in memory but DO NOT extract specific patent numbers.
 
-**Output JSON:**
-[
-  {
-    "Exhibits": "Conversation with Alvaro Medrano, August 22, 2024",
-    "deponent": "nan", "date": "nan", "cites": "nan",
-    "BatesBegin": "nan", "BatesEnd": "nan", "Pinpoint": "nan",
-    "Code Lines": "nan",
-    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 73
-  },
-  {
-    "Exhibits": "nan", "deponent": "nan", "date": "nan", "cites": "nan",
-    "BatesBegin": "TOT00116811", "BatesEnd": "TOT00116815", "Pinpoint": "nan",
-    "Code Lines": "nan",
-    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 73
-  },
-  {
-    "Exhibits": "Conversation with Alvaro Medrano, August 22, 2024",
-    "deponent": "nan", "date": "nan", "cites": "nan",
-    "BatesBegin": "nan", "BatesEnd": "nan", "Pinpoint": "nan",
-    "Code Lines": "nan",
-    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 74
-  },
-  {
-    "Exhibits": "Conversation with Miguel Blanco, August 23, 2024",
-    "deponent": "nan", "date": "nan", "cites": "nan",
-    "BatesBegin": "nan", "BatesEnd": "nan", "Pinpoint": "nan",
-    "Code Lines": "nan",
-    "Report Name": "${reportName || REPORT_NAME_PLACEHOLDER}", "Paragraph No.": 74
-  }
-]${fewShotSection}`;
+────────────────────────────────────────────────────
+SPLITTING RULES
+────────────────────────────────────────────────────
+• Citations separated by semicolons (;) MUST be split into separate rows.
+• Each Bates number or exhibit must have its own row.
+• Mixed footnotes (text + Bates) must be separated into multiple rows.
+
+────────────────────────────────────────────────────
+CITATION TYPE SCENARIOS
+────────────────────────────────────────────────────
+
+SCENARIO 1: Bates Number(s) with Pinpoint ('at')
+• Input: "TOT00191801-16 at TOT00191805"
+• BatesBegin: start Bates
+• BatesEnd: end Bates (or 'nan' if single)
+• Pinpoint: text/ID after 'at'
+• Others: 'nan'
+
+SCENARIO 2: Bates Range OR Single Bates (No Pinpoint)
+• Input: "TOT000189043" OR "TOT00189044-TOT00189059"
+• BatesBegin: start Bates (or single Bates)
+• BatesEnd: end Bates (or 'nan' if single)
+• Others: 'nan'
+
+SCENARIO 3: Mixed Footnote (Text + Bates)
+• Input: "Conversation with X... see also TOT001-TOT005."
+• Row 1: Non-Bates Exhibits = "Conversation with X...", Bates = 'nan'
+• Row 2: BatesBegin = "TOT001", BatesEnd = "TOT005", Non-Bates Exhibits = 'nan'
+
+SCENARIO 4: Code Lines
+• Pattern: "APPLE_INTEL_000015 at lines 3258-3285"
+• Pinpoint: Bates ID
+• Code Lines: line range
+• Others: 'nan'
+
+SCENARIO 5: Transcript/Rough Tr. Citations
+• Pattern: "Sebini.rough tr. at 23:21-25:1"
+• Non-Bates Exhibits: transcript name
+• Code Lines: page/line numbers
+• Others: 'nan'
+
+SCENARIO 6: URL / Standard / Treatise / Webpage
+• Rule: Code Lines takes ONLY the page/date. Non-Bates Exhibits takes EVERYTHING ELSE.
+• Input: "Qualcomm Ventures website, https://www.qualcommventures.com/, accessed August 16, 2024"
+  - Non-Bates Exhibits: "Qualcomm Ventures website, https://www.qualcommventures.com/"
+  - Code Lines: "accessed August 16, 2024"
+• Others: 'nan'
+
+SCENARIO 7: Deposition Citations
+• Pattern: "Prashant Vashi Deposition (3/28/24) at 35:17-36:22"
+• Depositions: name
+• date: date
+• cites: page/line cites
+• Others: 'nan'
+
+SCENARIO 8: Footnote Conversation
+• Input: "Conversation with Dr. Larson on August 22, 2024"
+• Non-Bates Exhibits: full text
+• Others: 'nan'
+
+────────────────────────────────────────────────────
+HIGHLIGHTING RULES (FOR VISUAL PAGES)
+────────────────────────────────────────────────────
+• All highlights must be slightly faded (low opacity) to keep text readable.
+• Highlight only the exact relevant text, not entire lines or blocks.
+
+────────────────────────────────────────────────────
+FEW-SHOT EXAMPLES FROM CORRECTIONS
+────────────────────────────────────────────────────
+${fewShotExamples && fewShotExamples.length > 0 ? 
+  `Learn from these manually corrected examples:\n${JSON.stringify(fewShotExamples, null, 2)}\n\nApply the same patterns and accuracy.` : 
+  'No correction examples yet.'}
+
+────────────────────────────────────────────────────
+OUTPUT FORMAT
+────────────────────────────────────────────────────
+Return ONLY valid JSON. No markdown or explanations.`;
 
     // Step 1: Initial Extraction
     console.log('Step 1: Initial extraction...');
@@ -225,10 +267,11 @@ serve(async (req) => {
     const validationPrompt = `You are a legal data extraction auditor. Your task is to rigorously validate and correct a previously extracted list of citations against the provided raw page content (text and image).
 
 **CRITICAL RULES FOR AUDIT AND CORRECTION:**
-1.  **Strict Adherence to Rules:** Re-apply every rule from the original extraction prompt (especially for splitting, 'nan' defaults, and Report/Paragraph mapping).
+1.  **Strict Adherence to Rules:** Re-apply every rule from the original extraction prompt (especially terminology: "Depositions" not "deponent", "Non-Bates Exhibits" not "Exhibits").
 2.  **Completeness:** Check if any citations present in the raw text/image were missed in the JSON. If missing, add them.
-3.  **Accuracy:** Check if all fields (BatesBegin, BatesEnd, Pinpoint, Exhibits, Code Lines, etc.) are accurately transcribed from the source text and correctly categorized according to the provided schema.
-4.  **Data Type & Format:** Ensure the final JSON strictly conforms to the provided schema (e.g., 'Paragraph No.' must be an integer, 'nan' must be a string).
+3.  **Accuracy:** Verify all fields (BatesBegin, BatesEnd, Pinpoint, Non-Bates Exhibits, Code Lines, etc.) are accurately transcribed and correctly categorized.
+4.  **Data Type & Format:** Ensure the final JSON strictly conforms to the schema (e.g., 'Paragraph No.' must be integer, 'nan' must be string).
+5.  **Memory Section:** Validate the memory section includes last_paragraph_number_used, incomplete_exhibit_detected, raw_text, and last_page_processed.
 
 **Your output MUST be a complete, correct, and valid JSON object conforming to the same schema.**
 
