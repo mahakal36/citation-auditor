@@ -27,6 +27,7 @@ const Index = () => {
   const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
   const [fewShotExamples, setFewShotExamples] = useState<CitationEntry[]>([]);
   const [pageInputValue, setPageInputValue] = useState("");
+  const [isClassifying, setIsClassifying] = useState(false);
   const { toast } = useToast();
 
   const currentData = pageData[pageNumber] || [];
@@ -278,17 +279,79 @@ const Index = () => {
     }
   };
 
-  const handleDeletePageData = (page: number) => {
-    setPageData(prev => {
-      const updated = { ...prev };
-      delete updated[page];
-      return updated;
-    });
-    toast({
-      title: "Table Deleted",
-      description: `Deleted citations table for page ${page}`,
-    });
-  };
+  const handleTextSelection = useCallback(async () => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim();
+    
+    if (!selectedText || selectedText.length < 2 || !pdfFile) {
+      return;
+    }
+
+    setIsClassifying(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/classify-text`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            selectedText,
+            pageNumber,
+            reportName: pdfFile.name,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Classification failed");
+      }
+
+      const data = await response.json();
+      
+      if (data.category !== "Uncategorized") {
+        // Create new citation entry
+        const newEntry: CitationEntry = {
+          "Non-Bates Exhibits": data.category === "Non-Bates Exhibits" ? data.value : "",
+          "Depositions": data.category === "Depositions" ? data.value : "",
+          "date": data.category === "date" ? data.value : "",
+          "cites": data.category === "cites" ? data.value : "",
+          "BatesBegin": data.category === "BatesBegin" ? data.value : "",
+          "BatesEnd": data.category === "BatesEnd" ? data.value : "",
+          "Pinpoint": data.category === "Pinpoint" ? data.value : "",
+          "Code Lines": data.category === "Code Lines" ? data.value : "",
+          "Report Name": data.category === "Report Name" ? data.value : pdfFile.name,
+          "Paragraph No.": data.category === "Para. No." ? parseInt(data.value) || 0 : 0,
+        };
+
+        setPageData(prev => ({
+          ...prev,
+          [pageNumber]: [...(prev[pageNumber] || []), newEntry],
+        }));
+
+        toast({
+          title: "Citation Added",
+          description: `Added as ${data.category} with ${data.confidence} confidence`,
+        });
+      } else {
+        toast({
+          title: "Not a Citation",
+          description: "Selected text doesn't match any citation category",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Classification error:", error);
+      toast({
+        title: "Classification Failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsClassifying(false);
+    }
+  }, [pdfFile, pageNumber, toast]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
@@ -414,11 +477,19 @@ const Index = () => {
 
         {/* Main Content */}
         {pdfFile && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-280px)]">
             {/* PDF Viewer */}
-            <div className="bg-card rounded-lg border shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Source Document</h2>
-              <div className="border rounded-md overflow-auto bg-muted/20 relative">
+            <div className="bg-card rounded-lg border shadow-sm p-6 flex flex-col overflow-hidden">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Source Document</h2>
+                <p className="text-xs text-muted-foreground">
+                  {isClassifying ? "Classifying..." : "Select text to classify"}
+                </p>
+              </div>
+              <div 
+                className="border rounded-md overflow-auto bg-muted/20 relative flex-1"
+                onMouseUp={handleTextSelection}
+              >
                 <Document
                   file={pdfFile}
                   onLoadSuccess={onDocumentLoadSuccess}
@@ -449,14 +520,14 @@ const Index = () => {
             </div>
 
             {/* Citation Data */}
-            <div className="bg-card rounded-lg border shadow-sm p-6">
+            <div className="bg-card rounded-lg border shadow-sm p-6 flex flex-col overflow-hidden">
               <h2 className="text-xl font-semibold mb-4">
                 Extracted Citations (Page {pageNumber})
               </h2>
               {currentData.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Press "Extract Page" or "Extract 10 Pages" to begin</p>
+                  <p>Press "Extract Page" or select text to add citations</p>
                 </div>
               ) : (
                 <CitationTable
@@ -476,7 +547,7 @@ const Index = () => {
                           title: "Learning Example Added",
                           description: "This correction will improve future extractions",
                         });
-                        return [...prev, citation].slice(-10); // Keep last 10 examples
+                        return [...prev, citation].slice(-10);
                       }
                       return prev;
                     });
@@ -487,51 +558,6 @@ const Index = () => {
           </div>
         )}
 
-        {/* All Extracted Pages Tables */}
-        {pdfFile && Object.keys(pageData).length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-2xl font-bold mb-6">All Extracted Citations</h2>
-            <div className="space-y-6">
-              {Object.entries(pageData)
-                .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                .map(([page, data]) => (
-                  <div key={page} className="bg-card rounded-lg border shadow-sm p-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold">
-                        Page {page} Citations ({data.length})
-                      </h3>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeletePageData(parseInt(page))}
-                      >
-                        Delete Table
-                      </Button>
-                    </div>
-                    <CitationTable
-                      data={data}
-                      onDataChange={(newData) => {
-                        setPageData(prev => ({
-                          ...prev,
-                          [parseInt(page)]: newData
-                        }));
-                      }}
-                      onRowHover={setHoveredCitation}
-                      onCitationCorrected={(citation) => {
-                        setFewShotExamples(prev => {
-                          const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
-                          if (!exists) {
-                            return [...prev, citation].slice(-10);
-                          }
-                          return prev;
-                        });
-                      }}
-                    />
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
 
         {!pdfFile && (
           <div className="text-center py-20">

@@ -52,7 +52,7 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
         type={isNumber ? "number" : "text"}
         defaultValue={info.getValue() || (isNumber ? 0 : "")}
         onBlur={(e) => handleCellEdit(info.row.index, columnId, e.target.value)}
-        className={columnId === "Non-Bates Exhibits" || columnId === "Report Name" ? "min-w-[200px]" : "min-w-[120px]"}
+        className="h-7 text-xs px-1.5 py-0.5 w-full"
       />
     );
   };
@@ -144,16 +144,16 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
   });
 
   return (
-    <div className="space-y-4">
-      <div className="border rounded-md overflow-auto max-h-[600px]">
-        <table className="w-full border-collapse">
+    <div className="space-y-4 h-full flex flex-col">
+      <div className="border rounded-md overflow-x-hidden overflow-y-auto flex-1 max-h-[calc(100vh-400px)]">
+        <table className="w-full border-collapse text-xs">
           <thead className="bg-muted sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="border p-2 text-left text-sm font-medium"
+                    className="border p-1.5 text-left text-xs font-medium whitespace-nowrap"
                   >
                     {flexRender(
                       header.column.columnDef.header,
@@ -173,7 +173,7 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
                 onMouseLeave={() => onRowHover?.(null)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border p-2">
+                  <td key={cell.id} className="border p-1">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
