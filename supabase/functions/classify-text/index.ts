@@ -19,28 +19,71 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const classificationPrompt = `You are a legal citation classifier. Analyze the following text and determine if it belongs to one of these categories:
+    const classificationPrompt = `You are classifying a piece of selected text from a legal document.
 
-Categories:
-- Non-Bates Exhibits: Exhibit references without Bates numbers (e.g., "Ex. 5", "Exhibit A")
-- Depositions: Deposition references (e.g., "Smith Dep.", "Jones Deposition")
-- date: Dates in legal format (e.g., "Jan. 15, 2023", "January 2023")
-- cites: Case citations (e.g., "Smith v. Jones, 123 F.3d 456")
-- BatesBegin: Starting Bates number (e.g., "ABC00001")
-- BatesEnd: Ending Bates number (e.g., "ABC00010")
-- Pinpoint: Page or line references (e.g., "at 5", "p. 10", "¶ 23")
-- Code Lines: Code section references (e.g., "§ 101", "35 U.S.C. § 112")
-- Report Name: Name of a report or document
-- Para. No.: Paragraph number (integer only)
+Your task is to determine which category the selected text belongs to.
 
-Text to classify: "${selectedText}"
+Return only ONE of the following exact labels (no JSON, no explanations):
+• Non-Bates Exhibits  
+• Depositions  
+• Date  
+• Cites  
+• Bates Begin  
+• Bates End  
+• Pinpoint  
+• Code Lines  
+• Report Name  
+• Para. No.  
+• Uncategorized   ← use ONLY when none of the categories applies
 
-Return ONLY a JSON object with this exact format:
-{
-  "category": "<one of the categories above or 'Uncategorized'>",
-  "value": "${selectedText}",
-  "confidence": "<high/medium/low>"
-}`;
+────────────────────────────────────────
+CLASSIFICATION RULES
+────────────────────────────────────────
+
+1. **Bates Begin / Bates End**
+   - If the text is a Bates number or range (e.g., "TOT00191801-16", "APPLE_000123"):
+     • If it's a single Bates number → "Bates Begin"
+     • If it's a range → "Bates Begin" (start) and later separately "Bates End" (end)
+   
+2. **Code Lines**
+   - Look for line references (e.g., "lines 3258-3285", "23:21-25:1")
+
+3. **Depositions**
+   - Names followed by Deposition formatting (e.g., "Prashant Vashi Deposition", or name + Dep. cite)
+
+4. **Non-Bates Exhibits**
+   - Any citation-like text that is not Bates and not a deposition.
+   - Conversations, transcripts, URLs, references, or general source text.
+
+5. **Date**
+   - If it resembles a clear date format (e.g., "3/28/24", "August 16, 2024")
+
+6. **Cites**
+   - Pinpoint page/line citations (e.g., "35:17-36:22")
+   - NOT Bates and NOT code lines
+
+7. **Pinpoint**
+   - When "at" or pinpoint reference follows a Bates citation  
+     Example: "TOT00018 at 3:22–4:5" → Pinpoint = "3:22–4:5"
+
+8. **Report Name**
+   - Always fixed and should only be classified when the selected text matches the known report name.
+
+9. **Para. No.**
+   - If the selected text is ONLY a paragraph number.
+
+10. **Uncategorized**
+   - Use this only if there is no confident match.
+
+────────────────────────────────────────
+OUTPUT FORMAT
+────────────────────────────────────────
+Return ONLY one of the category labels above. Do NOT return explanations or JSON.
+
+Selected text:
+"${selectedText}"
+
+Return format: Just the category name (e.g., "Bates Begin" or "Uncategorized")`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -51,10 +94,10 @@ Return ONLY a JSON object with this exact format:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "You are a precise legal citation classifier. Always respond with valid JSON only." },
+          { role: "system", content: "You are a precise legal citation classifier. Return ONLY the category name, nothing else." },
           { role: "user", content: classificationPrompt }
         ],
-        temperature: 0.3,
+        temperature: 0.1,
       }),
     });
 
@@ -65,21 +108,15 @@ Return ONLY a JSON object with this exact format:
     }
 
     const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
+    const aiResponse = data.choices[0].message.content.trim();
     
-    // Extract JSON from response
-    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("Failed to parse AI response");
-    }
-    
-    const classification = JSON.parse(jsonMatch[0]);
+    // The AI should return just the category name
+    const category = aiResponse.replace(/[•\-\s]+$/, '').trim();
 
     return new Response(
       JSON.stringify({
-        category: classification.category,
-        value: classification.value,
-        confidence: classification.confidence,
+        category,
+        value: selectedText,
         pageNumber,
         reportName,
       }),
