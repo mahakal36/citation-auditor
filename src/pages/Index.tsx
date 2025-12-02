@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { CitationTable } from "@/components/CitationTable";
 import { PdfHighlightLayer } from "@/components/PdfHighlightLayer";
-import { ChevronLeft, ChevronRight, Upload, Download, Sparkles } from "lucide-react";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { ChevronLeft, ChevronRight, Upload, Download, Sparkles, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { CitationEntry } from "@/types/citation";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -28,6 +29,7 @@ const Index = () => {
   const [fewShotExamples, setFewShotExamples] = useState<CitationEntry[]>([]);
   const [pageInputValue, setPageInputValue] = useState("");
   const [isClassifying, setIsClassifying] = useState(false);
+  const [pdfScale, setPdfScale] = useState(1.0);
   const { toast } = useToast();
 
   const currentData = pageData[pageNumber] || [];
@@ -357,9 +359,9 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
       <div className="container mx-auto p-6 max-w-[1800px]">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent mb-2">
-            Legal Citation Auditor
+            Exhibit Extraction
           </h1>
           <p className="text-muted-foreground">
             AI-powered citation extraction and validation for legal documents
@@ -477,85 +479,141 @@ const Index = () => {
 
         {/* Main Content */}
         {pdfFile && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-280px)]">
+          <ResizablePanelGroup direction="horizontal" className="h-[calc(100vh-260px)] rounded-lg border">
             {/* PDF Viewer */}
-            <div className="bg-card rounded-lg border shadow-sm p-6 flex flex-col overflow-hidden">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Source Document</h2>
-                <p className="text-xs text-muted-foreground">
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="bg-card h-full p-6 flex flex-col overflow-hidden">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">Source Document</h2>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="w-4 h-4" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground min-w-[50px] text-center">
+                      {Math.round(pdfScale * 100)}%
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setPdfScale(s => Math.min(2.0, s + 0.1))}
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setPdfScale(1.0)}
+                      title="Reset Zoom"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2">
                   {isClassifying ? "Classifying..." : "Select text to classify"}
                 </p>
-              </div>
-              <div 
-                className="border rounded-md overflow-auto bg-muted/20 relative flex-1"
-                onMouseUp={handleTextSelection}
-              >
-                <Document
-                  file={pdfFile}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  className="flex justify-center"
+                <div 
+                  className="border rounded-md overflow-auto bg-muted/20 relative flex-1"
+                  onMouseUp={handleTextSelection}
                 >
-                  <div className="relative inline-block">
-                    <Page
-                      pageNumber={pageNumber}
-                      renderTextLayer={true}
-                      renderAnnotationLayer={true}
-                      className="max-w-full"
-                      onLoadSuccess={onPageLoadSuccess}
-                    />
-                    {pageTextContent && pageViewport && currentData.length > 0 && (
-                      <PdfHighlightLayer
-                        citations={currentData}
+                  <Document
+                    file={pdfFile}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    className="flex justify-center"
+                  >
+                    <div className="relative inline-block">
+                      <Page
                         pageNumber={pageNumber}
-                        pageWidth={pageDimensions.width}
-                        pageHeight={pageDimensions.height}
-                        textContent={pageTextContent}
-                        viewport={pageViewport}
-                        hoveredCitation={hoveredCitation}
+                        renderTextLayer={true}
+                        renderAnnotationLayer={true}
+                        scale={pdfScale}
+                        className="max-w-full"
+                        onLoadSuccess={onPageLoadSuccess}
                       />
-                    )}
-                  </div>
-                </Document>
+                      {pageTextContent && pageViewport && currentData.length > 0 && (
+                        <PdfHighlightLayer
+                          citations={currentData}
+                          pageNumber={pageNumber}
+                          pageWidth={pageDimensions.width}
+                          pageHeight={pageDimensions.height}
+                          textContent={pageTextContent}
+                          viewport={pageViewport}
+                          hoveredCitation={hoveredCitation}
+                        />
+                      )}
+                    </div>
+                  </Document>
+                </div>
               </div>
-            </div>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
 
             {/* Citation Data */}
-            <div className="bg-card rounded-lg border shadow-sm p-6 flex flex-col overflow-hidden">
-              <h2 className="text-xl font-semibold mb-4">
-                Extracted Citations (Page {pageNumber})
-              </h2>
-              {currentData.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Press "Extract Page" or select text to add citations</p>
-                </div>
-              ) : (
-                <CitationTable
-                  data={currentData}
-                  onDataChange={(newData) => {
-                    setPageData(prev => ({
-                      ...prev,
-                      [pageNumber]: newData
-                    }));
-                  }}
-                  onRowHover={setHoveredCitation}
-                  onCitationCorrected={(citation) => {
-                    setFewShotExamples(prev => {
-                      const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
-                      if (!exists) {
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="bg-card h-full p-6 flex flex-col overflow-hidden">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">
+                    Extracted Citations (Page {pageNumber})
+                  </h2>
+                  {currentData.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setPageData(prev => ({
+                          ...prev,
+                          [pageNumber]: []
+                        }));
                         toast({
-                          title: "Learning Example Added",
-                          description: "This correction will improve future extractions",
+                          title: "Cleared",
+                          description: "All citations cleared from this page",
                         });
-                        return [...prev, citation].slice(-10);
-                      }
-                      return prev;
-                    });
-                  }}
-                />
-              )}
-            </div>
-          </div>
+                      }}
+                    >
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+                {currentData.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Press "Extract Page" or select text to add citations</p>
+                  </div>
+                ) : (
+                  <CitationTable
+                    data={currentData}
+                    onDataChange={(newData) => {
+                      setPageData(prev => ({
+                        ...prev,
+                        [pageNumber]: newData
+                      }));
+                    }}
+                    onRowHover={setHoveredCitation}
+                    onCitationCorrected={(citation) => {
+                      setFewShotExamples(prev => {
+                        const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
+                        if (!exists) {
+                          toast({
+                            title: "Learning Example Added",
+                            description: "This correction will improve future extractions",
+                          });
+                          return [...prev, citation].slice(-10);
+                        }
+                        return prev;
+                      });
+                    }}
+                  />
+                )}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         )}
 
 
