@@ -145,8 +145,8 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
 
   return (
     <div className="space-y-4 h-full flex flex-col">
-      <div className="border rounded-md overflow-x-hidden overflow-y-auto flex-1 max-h-[calc(100vh-400px)]">
-        <table className="w-full border-collapse text-xs">
+      <div className="border rounded-md overflow-x-auto overflow-y-auto flex-1 max-h-[calc(100vh-400px)]">
+        <table className="w-full border-collapse text-xs min-w-max">
           <thead className="bg-muted sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
