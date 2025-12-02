@@ -315,27 +315,66 @@ const Index = () => {
       if (data.category !== "Uncategorized") {
         // Create new citation entry
         const newEntry: CitationEntry = {
-          "Non-Bates Exhibits": data.category === "Non-Bates Exhibits" ? data.value : "",
-          "Depositions": data.category === "Depositions" ? data.value : "",
-          "date": data.category === "date" ? data.value : "",
-          "cites": data.category === "cites" ? data.value : "",
-          "BatesBegin": data.category === "BatesBegin" ? data.value : "",
-          "BatesEnd": data.category === "BatesEnd" ? data.value : "",
-          "Pinpoint": data.category === "Pinpoint" ? data.value : "",
-          "Code Lines": data.category === "Code Lines" ? data.value : "",
-          "Report Name": data.category === "Report Name" ? data.value : pdfFile.name,
-          "Paragraph No.": data.category === "Para. No." ? parseInt(data.value) || 0 : 0,
+          "Non-Bates Exhibits": "",
+          "Depositions": "",
+          "date": "",
+          "cites": "",
+          "BatesBegin": "",
+          "BatesEnd": "",
+          "Pinpoint": "",
+          "Code Lines": "",
+          "Report Name": pdfFile.name,
+          "Paragraph No.": 0,
         };
 
-        setPageData(prev => ({
-          ...prev,
-          [pageNumber]: [...(prev[pageNumber] || []), newEntry],
-        }));
+        // Handle Bates Range specially
+        if (data.category === "Bates Range" && data.batesBegin && data.batesEnd) {
+          newEntry.BatesBegin = data.batesBegin;
+          newEntry.BatesEnd = data.batesEnd;
+          
+          setPageData(prev => ({
+            ...prev,
+            [pageNumber]: [...(prev[pageNumber] || []), newEntry],
+          }));
 
-        toast({
-          title: "Citation Added",
-          description: `Added as ${data.category} with ${data.confidence} confidence`,
-        });
+          toast({
+            title: "Bates Range Added",
+            description: `Begin: ${data.batesBegin}, End: ${data.batesEnd}`,
+          });
+        } else {
+          // Handle other categories
+          const fieldMap: Record<string, keyof CitationEntry> = {
+            "Non-Bates Exhibits": "Non-Bates Exhibits",
+            "Depositions": "Depositions",
+            "Date": "date",
+            "Cites": "cites",
+            "Bates Begin": "BatesBegin",
+            "Bates End": "BatesEnd",
+            "Pinpoint": "Pinpoint",
+            "Code Lines": "Code Lines",
+            "Report Name": "Report Name",
+            "Para. No.": "Paragraph No.",
+          };
+
+          const field = fieldMap[data.category];
+          if (field) {
+            if (field === "Paragraph No.") {
+              newEntry[field] = parseInt(data.value) || 0;
+            } else {
+              newEntry[field] = data.value;
+            }
+          }
+
+          setPageData(prev => ({
+            ...prev,
+            [pageNumber]: [...(prev[pageNumber] || []), newEntry],
+          }));
+
+          toast({
+            title: "Citation Added",
+            description: `Added as ${data.category}`,
+          });
+        }
       } else {
         toast({
           title: "Not a Citation",

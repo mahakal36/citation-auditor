@@ -111,12 +111,28 @@ Return format: Just the category name (e.g., "Bates Begin" or "Uncategorized")`;
     const aiResponse = data.choices[0].message.content.trim();
     
     // The AI should return just the category name
-    const category = aiResponse.replace(/[•\-\s]+$/, '').trim();
+    let category = aiResponse.replace(/[•\-\s]+$/, '').trim();
+
+    // Detect Bates ranges and split them
+    let batesBegin = null;
+    let batesEnd = null;
+    
+    if (category === "Bates Begin" || category === "Bates End") {
+      // Check if the text contains a Bates range (e.g., "TOT00193569-TOT00193580")
+      const batesRangeMatch = selectedText.match(/^([A-Z0-9_]+)-([A-Z0-9_]+)$/i);
+      if (batesRangeMatch) {
+        batesBegin = batesRangeMatch[1];
+        batesEnd = batesRangeMatch[2];
+        category = "Bates Range"; // Special category to indicate a range
+      }
+    }
 
     return new Response(
       JSON.stringify({
         category,
         value: selectedText,
+        batesBegin,
+        batesEnd,
         pageNumber,
         reportName,
       }),
