@@ -52,7 +52,7 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
         type={isNumber ? "number" : "text"}
         defaultValue={info.getValue() || (isNumber ? 0 : "")}
         onBlur={(e) => handleCellEdit(info.row.index, columnId, e.target.value)}
-        className="h-7 text-xs px-1.5 py-0.5 w-full"
+        className="h-6 text-[10px] px-1 py-0.5 w-full min-w-[60px]"
       />
     );
   };
@@ -145,15 +145,15 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
 
   return (
     <div className="space-y-4 h-full flex flex-col">
-      <div className="border rounded-md overflow-x-auto overflow-y-auto flex-1 max-h-[calc(100vh-400px)]">
-        <table className="w-full border-collapse text-xs min-w-max">
+      <div className="border rounded-md overflow-auto flex-1 max-h-[calc(100vh-400px)]">
+        <table className="w-full border-collapse text-[10px]">
           <thead className="bg-muted sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="border p-1.5 text-left text-xs font-medium whitespace-nowrap"
+                    className="border p-1 text-left text-[10px] font-medium whitespace-nowrap"
                   >
                     {flexRender(
                       header.column.columnDef.header,
@@ -173,7 +173,7 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
                 onMouseLeave={() => onRowHover?.(null)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border p-1">
+                  <td key={cell.id} className="border p-0.5">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -183,12 +183,12 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
         </table>
       </div>
       
-      <Button onClick={handleAddRow} variant="outline" className="gap-2">
+      <Button onClick={handleAddRow} variant="outline" size="sm" className="gap-2">
         <Plus className="w-4 h-4" />
         Add Row
       </Button>
       
-      <p className="text-sm text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Total: {data.length} citations
       </p>
     </div>
