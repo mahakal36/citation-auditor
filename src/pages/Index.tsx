@@ -360,12 +360,9 @@ const Index = () => {
       <div className="container mx-auto p-6 max-w-[1800px]">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent mb-2">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
             Exhibit Extraction
           </h1>
-          <p className="text-muted-foreground">
-            AI-powered citation extraction and validation for legal documents
-          </p>
         </div>
 
         {/* Controls */}
@@ -394,48 +391,6 @@ const Index = () => {
 
             {pdfFile && (
               <>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-                    disabled={pageNumber <= 1}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="text-sm font-medium min-w-[100px] text-center">
-                    Page {pageNumber} of {numPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
-                    disabled={pageNumber >= numPages}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Jump to page"
-                    value={pageInputValue}
-                    onChange={(e) => setPageInputValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handlePageJump()}
-                    className="w-32"
-                    min={1}
-                    max={numPages}
-                  />
-                  <Button 
-                    onClick={handlePageJump} 
-                    disabled={!pageInputValue}
-                    variant="secondary"
-                  >
-                    Go
-                  </Button>
-                </div>
-
                 <Button
                   onClick={extractPageData}
                   disabled={isExtracting || isBatchProcessing}
@@ -483,36 +438,83 @@ const Index = () => {
             {/* PDF Viewer */}
             <ResizablePanel defaultSize={50} minSize={30}>
               <div className="bg-card h-full p-6 flex flex-col overflow-hidden">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold">Source Document</h2>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
-                      title="Zoom Out"
-                    >
-                      <ZoomOut className="w-4 h-4" />
-                    </Button>
-                    <span className="text-xs text-muted-foreground min-w-[50px] text-center">
-                      {Math.round(pdfScale * 100)}%
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setPdfScale(s => Math.min(2.0, s + 0.1))}
-                      title="Zoom In"
-                    >
-                      <ZoomIn className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setPdfScale(1.0)}
-                      title="Reset Zoom"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                    </Button>
+                <div className="flex flex-col gap-3 mb-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-semibold">Source Document</h2>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
+                        title="Zoom Out"
+                      >
+                        <ZoomOut className="w-4 h-4" />
+                      </Button>
+                      <span className="text-xs text-muted-foreground min-w-[50px] text-center">
+                        {Math.round(pdfScale * 100)}%
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setPdfScale(s => Math.min(2.0, s + 0.1))}
+                        title="Zoom In"
+                      >
+                        <ZoomIn className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setPdfScale(1.0)}
+                        title="Reset Zoom"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+                        disabled={pageNumber <= 1}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <span className="text-sm font-medium min-w-[100px] text-center">
+                        Page {pageNumber} of {numPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
+                        disabled={pageNumber >= numPages}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Jump to page"
+                        value={pageInputValue}
+                        onChange={(e) => setPageInputValue(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handlePageJump()}
+                        className="w-32"
+                        min={1}
+                        max={numPages}
+                      />
+                      <Button 
+                        onClick={handlePageJump} 
+                        disabled={!pageInputValue}
+                        variant="secondary"
+                        size="sm"
+                      >
+                        Go
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
