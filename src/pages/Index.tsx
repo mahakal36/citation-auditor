@@ -28,7 +28,6 @@ const Index = () => {
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
   const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
   const [fewShotExamples, setFewShotExamples] = useState<CitationEntry[]>([]);
-  const [pageInputValue, setPageInputValue] = useState("");
   const [isClassifying, setIsClassifying] = useState(false);
   const [pdfScale, setPdfScale] = useState(1.0);
   const { toast } = useToast();
@@ -268,20 +267,6 @@ const Index = () => {
     });
   }, [allSavedData, pdfFile, toast]);
 
-  const handlePageJump = () => {
-    const pageNum = parseInt(pageInputValue);
-    if (pageNum >= 1 && pageNum <= numPages) {
-      setPageNumber(pageNum);
-      setPageInputValue("");
-    } else {
-      toast({
-        title: "Invalid Page",
-        description: `Please enter a page number between 1 and ${numPages}`,
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleTextSelection = useCallback(async () => {
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
@@ -400,8 +385,8 @@ const Index = () => {
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
         <div className="container mx-auto px-4 py-3 max-w-[1800px]">
           {/* Compact Header */}
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
               Exhibit Extraction
             </h1>
             
@@ -500,100 +485,131 @@ const Index = () => {
 
           {/* Main Content */}
           {pdfFile && (
-            <ResizablePanelGroup direction="horizontal" className="h-[calc(100vh-80px)] rounded-lg border">
-            {/* PDF Viewer */}
+            <ResizablePanelGroup direction="horizontal" className="h-[calc(100vh-64px)] rounded-lg border">
+            {/* PDF Viewer - Scrollable */}
             <ResizablePanel defaultSize={50} minSize={30}>
-              <div className="bg-card h-full p-6 flex flex-col overflow-hidden">
-                <div className="flex flex-col gap-3 mb-4">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-semibold">Source Document</h2>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
-                        title="Zoom Out"
-                      >
-                        <ZoomOut className="w-4 h-4" />
-                      </Button>
-                      <span className="text-xs text-muted-foreground min-w-[50px] text-center">
-                        {Math.round(pdfScale * 100)}%
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setPdfScale(s => Math.min(2.0, s + 0.1))}
-                        title="Zoom In"
-                      >
-                        <ZoomIn className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setPdfScale(1.0)}
-                        title="Reset Zoom"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-                        disabled={pageNumber <= 1}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
-                      <span className="text-sm font-medium min-w-[100px] text-center">
-                        Page {pageNumber} of {numPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
-                        disabled={pageNumber >= numPages}
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
+              <div className="bg-card h-full flex flex-col overflow-hidden">
+                {/* Fixed Header */}
+                <div className="p-3 border-b bg-card/95 backdrop-blur-sm shrink-0">
+                  <div className="flex items-center justify-between gap-2">
+                    {/* Progress & Page Navigation */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 text-xs">
+                        <span className="text-primary font-medium">
+                          {numPages > 0 ? Math.round((pageNumber / numPages) * 100) : 0}%
+                        </span>
+                        <span className="text-muted-foreground">Page</span>
+                        <Input
+                          type="number"
+                          value={pageNumber}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (val >= 1 && val <= numPages) {
+                              setPageNumber(val);
+                            }
+                          }}
+                          className="w-12 h-6 text-xs text-center px-1"
+                          min={1}
+                          max={numPages}
+                        />
+                        <span className="text-muted-foreground">of {numPages}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+                              disabled={pageNumber <= 1}
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Previous Page</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
+                              disabled={pageNumber >= numPages}
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Next Page</TooltipContent>
+                        </Tooltip>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        placeholder="Jump to page"
-                        value={pageInputValue}
-                        onChange={(e) => setPageInputValue(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handlePageJump()}
-                        className="w-32"
-                        min={1}
-                        max={numPages}
-                      />
-                      <Button 
-                        onClick={handlePageJump} 
-                        disabled={!pageInputValue}
-                        variant="secondary"
-                        size="sm"
-                      >
-                        Go
-                      </Button>
+                    {/* Zoom Controls */}
+                    <div className="flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
+                          >
+                            <ZoomOut className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Zoom Out</TooltipContent>
+                      </Tooltip>
+                      <span className="text-xs text-muted-foreground min-w-[36px] text-center">
+                        {Math.round(pdfScale * 100)}%
+                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setPdfScale(s => Math.min(2.0, s + 0.1))}
+                          >
+                            <ZoomIn className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Zoom In</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setPdfScale(1.0)}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Reset Zoom</TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {isClassifying ? "Classifying..." : "Select text to classify"}
-                </p>
+                
+                {/* Scrollable PDF Container */}
                 <div 
-                  className="border rounded-md overflow-auto bg-muted/20 relative flex-1"
+                  className="flex-1 overflow-auto bg-muted/20"
                   onMouseUp={handleTextSelection}
                 >
+                  {isClassifying && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-background/80 rounded-lg p-3 flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm">Classifying...</span>
+                    </div>
+                  )}
                   <Document
                     file={pdfFile}
                     onLoadSuccess={onDocumentLoadSuccess}
-                    className="flex justify-center"
+                    className="flex justify-center p-4"
                   >
                     <div className="relative inline-block">
                       <Page
@@ -601,7 +617,7 @@ const Index = () => {
                         renderTextLayer={true}
                         renderAnnotationLayer={true}
                         scale={pdfScale}
-                        className="max-w-full"
+                        className="max-w-full shadow-lg"
                         onLoadSuccess={onPageLoadSuccess}
                       />
                       {pageTextContent && pageViewport && currentData.length > 0 && (
@@ -624,73 +640,88 @@ const Index = () => {
 
             <ResizableHandle withHandle />
 
-            {/* Citation Data */}
+            {/* Citation Data - Fixed Panel */}
             <ResizablePanel defaultSize={50} minSize={30}>
-              <div className="bg-card h-full p-6 flex flex-col overflow-hidden">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold">
-                    Extracted Citations (Page {pageNumber})
-                  </h2>
-                  {currentData.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
+              <div className="bg-card h-full flex flex-col overflow-hidden">
+                {/* Fixed Header */}
+                <div className="p-3 border-b bg-card/95 backdrop-blur-sm shrink-0">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-sm font-semibold">
+                      Extracted Citations (Page {pageNumber})
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      {(isExtracting || isBatchProcessing) && (
+                        <div className="flex items-center gap-2 text-xs text-primary">
+                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          <span>{isBatchProcessing ? "Processing batch..." : "Extracting..."}</span>
+                        </div>
+                      )}
+                      {currentData.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setPageData(prev => ({
+                              ...prev,
+                              [pageNumber]: []
+                            }));
+                            toast({
+                              title: "Cleared",
+                              description: "All citations cleared from this page",
+                            });
+                          }}
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Scrollable Table Container */}
+                <div className="flex-1 overflow-auto p-3">
+                  {currentData.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">Press Extract or select text to add citations</p>
+                    </div>
+                  ) : (
+                    <CitationTable
+                      data={currentData}
+                      onDataChange={(newData) => {
                         setPageData(prev => ({
                           ...prev,
-                          [pageNumber]: []
+                          [pageNumber]: newData
                         }));
-                        toast({
-                          title: "Cleared",
-                          description: "All citations cleared from this page",
+                      }}
+                      onRowHover={setHoveredCitation}
+                      onCitationCorrected={(citation) => {
+                        setFewShotExamples(prev => {
+                          const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
+                          if (!exists) {
+                            toast({
+                              title: "Learning Example Added",
+                              description: "This correction will improve future extractions",
+                            });
+                            return [...prev, citation].slice(-10);
+                          }
+                          return prev;
                         });
                       }}
-                    >
-                      Clear All
-                    </Button>
+                    />
                   )}
                 </div>
-                {currentData.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>Press "Extract Page" or select text to add citations</p>
-                  </div>
-                ) : (
-                  <CitationTable
-                    data={currentData}
-                    onDataChange={(newData) => {
-                      setPageData(prev => ({
-                        ...prev,
-                        [pageNumber]: newData
-                      }));
-                    }}
-                    onRowHover={setHoveredCitation}
-                    onCitationCorrected={(citation) => {
-                      setFewShotExamples(prev => {
-                        const exists = prev.some(ex => JSON.stringify(ex) === JSON.stringify(citation));
-                        if (!exists) {
-                          toast({
-                            title: "Learning Example Added",
-                            description: "This correction will improve future extractions",
-                          });
-                          return [...prev, citation].slice(-10);
-                        }
-                        return prev;
-                      });
-                    }}
-                  />
-                )}
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
 
-
           {!pdfFile && (
-            <div className="text-center py-20">
-              <Upload className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-xl font-semibold mb-2">No PDF Uploaded</h3>
-              <p className="text-muted-foreground">
+            <div className="text-center py-16">
+              <Upload className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+              <h3 className="text-lg font-semibold mb-1">No PDF Uploaded</h3>
+              <p className="text-sm text-muted-foreground">
                 Upload a legal document to start extracting citations
               </p>
             </div>

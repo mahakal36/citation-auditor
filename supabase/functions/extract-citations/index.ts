@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const REPORT_NAME_PLACEHOLDER = "Legal Expert Report";
 
 serve(async (req) => {
@@ -256,16 +256,16 @@ Return ONLY valid JSON:
 
 Only return JSON. No explanations or markdown.`;
 
-    // Step 1: Initial Extraction
-    console.log('Step 1: Initial extraction...');
-    const extractResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Step 1: Initial Extraction using Lovable AI with GPT-5 Nano for speed
+    console.log('Step 1: Initial extraction with GPT-5 Nano...');
+    const extractResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'openai/gpt-5-nano',
         messages: [
           { role: 'system', content: systemPrompt },
           {
@@ -314,14 +314,14 @@ Only return JSON. No explanations or markdown.`;
 Initial extraction result to validate:
 ${initialExtraction}`;
 
-    const validateResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const validateResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'openai/gpt-5-nano',
         messages: [
           { role: 'system', content: validationPrompt },
           {
