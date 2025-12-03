@@ -9,6 +9,7 @@ interface PdfHighlightLayerProps {
   textContent: any;
   viewport: any;
   hoveredCitation: number | null;
+  scale?: number;
 }
 
 interface Highlight {
@@ -28,6 +29,7 @@ export const PdfHighlightLayer = ({
   textContent,
   viewport,
   hoveredCitation,
+  scale = 1,
 }: PdfHighlightLayerProps) => {
   const [highlights, setHighlights] = useState<Highlight[]>([]);
 
@@ -94,6 +96,7 @@ export const PdfHighlightLayer = ({
               const minY = Math.min(...ys);
               const maxHeight = Math.max(...heights);
               
+              // Store raw coordinates (will be scaled during render)
               newHighlights.push({
                 left: minX,
                 top: pageHeight - minY - maxHeight,
@@ -126,20 +129,24 @@ export const PdfHighlightLayer = ({
     return colors[index % colors.length];
   };
 
+  // Scale dimensions with zoom level
+  const scaledWidth = pageWidth * scale;
+  const scaledHeight = pageHeight * scale;
+
   return (
     <div
       className="absolute top-0 left-0 pointer-events-none"
-      style={{ width: pageWidth, height: pageHeight }}
+      style={{ width: scaledWidth, height: scaledHeight }}
     >
       {highlights.map((highlight, idx) => (
         <div
           key={idx}
           className="absolute transition-all duration-200"
           style={{
-            left: highlight.left,
-            top: highlight.top,
-            width: highlight.width,
-            height: highlight.height,
+            left: highlight.left * scale,
+            top: highlight.top * scale,
+            width: highlight.width * scale,
+            height: highlight.height * scale,
             backgroundColor: getColor(highlight.citationIndex),
             border:
               hoveredCitation === highlight.citationIndex
