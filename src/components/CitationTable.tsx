@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -6,10 +5,10 @@ import {
   createColumnHelper,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
 import type { CitationEntry } from "@/types/citation";
+import { useEffect, useRef } from "react";
 
 interface CitationTableProps {
   data: CitationEntry[];
@@ -20,39 +19,67 @@ interface CitationTableProps {
 
 const columnHelper = createColumnHelper<CitationEntry>();
 
-export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrected }: CitationTableProps) => {
-  const [editingCell, setEditingCell] = useState<{
-    rowIndex: number;
-    columnId: string;
-  } | null>(null);
+export const CitationTable = ({
+  data,
+  onDataChange,
+  onRowHover,
+  onCitationCorrected,
+}: CitationTableProps) => {
 
   const handleCellEdit = (rowIndex: number, columnId: string, value: string) => {
     const newData = [...data];
     const key = columnId as keyof CitationEntry;
-    
+
     if (key === "Paragraph No.") {
       newData[rowIndex][key] = parseInt(value) || 0;
     } else {
       newData[rowIndex][key] = value;
     }
-    
+
     onDataChange(newData);
-    
-    // Track manual correction for few-shot learning
+
     if (onCitationCorrected) {
       onCitationCorrected(newData[rowIndex]);
     }
   };
 
-  const renderEditableCell = (info: any, columnId: string) => {
-    const isNumber = columnId === "Paragraph No.";
+  const EditableCell = ({
+    value,
+    rowIndex,
+    columnId,
+  }: {
+    value: any;
+    rowIndex: number;
+    columnId: string;
+  }) => {
+    const divRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (divRef.current && divRef.current.textContent !== value) {
+        divRef.current.textContent = value === null || value === undefined ? "" : String(value);
+      }
+    }, [value]);
+
     return (
-      <Input
-        key={`${info.row.index}-${columnId}`}
-        type={isNumber ? "number" : "text"}
-        defaultValue={info.getValue() || (isNumber ? 0 : "")}
-        onBlur={(e) => handleCellEdit(info.row.index, columnId, e.target.value)}
-        className="h-6 text-[10px] px-1 py-0.5 w-full min-w-[60px]"
+      <div
+        ref={divRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={(e) => {
+          const text = e.currentTarget.textContent || "";
+          handleCellEdit(rowIndex, columnId, text);
+        }}
+        className="w-full h-full px-1 py-0.5 text-[10px] outline-none"
+      />
+    );
+  };
+
+  const renderEditableCell = (info: any, columnId: string) => {
+    return (
+      <EditableCell
+        value={info.getValue()}
+        rowIndex={info.row.index}
+        columnId={columnId}
       />
     );
   };
@@ -116,7 +143,7 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
       cell: (info) => renderEditableCell(info, "Report Name"),
     }),
     {
-      id: "paragraphNo",
+      id: "Paragraph No.",
       accessorFn: (row) => row["Paragraph No."],
       header: "Para. No.",
       cell: (info) => renderEditableCell(info, "Paragraph No."),
@@ -155,15 +182,13 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
                     key={header.id}
                     className="border p-1 text-left text-[10px] font-medium whitespace-nowrap"
                   >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
             ))}
           </thead>
+
           <tbody>
             {table.getRowModel().rows.map((row) => (
               <tr
@@ -182,12 +207,12 @@ export const CitationTable = ({ data, onDataChange, onRowHover, onCitationCorrec
           </tbody>
         </table>
       </div>
-      
+
       <Button onClick={handleAddRow} variant="outline" size="sm" className="gap-2">
         <Plus className="w-4 h-4" />
         Add Row
       </Button>
-      
+
       <p className="text-xs text-muted-foreground">
         Total: {data.length} citations
       </p>

@@ -1,13 +1,43 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getDocument } from "https://deno.land/x/pdfjs@2.12.313/dist/pdf.js";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const REPORT_NAME_PLACEHOLDER = "Legal Expert Report";
+
+// Function to extract text from PDF
+async function extractTextFromPDF(pdfData: Uint8Array): Promise<string> {
+  try {
+    // Load the PDF document
+    const loadingTask = getDocument({ data: pdfData });
+    const pdf = await loadingTask.promise;
+    
+    let fullText = "";
+    
+    // Extract text from each page
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      
+      // Combine text items
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      
+      fullText += `\n--- PAGE ${pageNum} ---\n${pageText}\n`;
+    }
+    
+    return fullText;
+  } catch (error) {
+    console.error('Error extracting text from PDF:', error);
+    throw new Error('Failed to extract text from PDF');
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,9 +45,42 @@ serve(async (req) => {
   }
 
   try {
-    const { pageText, pageImage, pageNumber, reportName, fewShotExamples = [] } = await req.json();
+    const { pdfData, pageNumber, reportName, fewShotExamples = [], skipValidation = true } = await req.json();
     
-    console.log(`Processing page ${pageNumber} for report: ${reportName}`);
+    console.log(`Processing PDF page ${pageNumber} for report: ${reportName}`);
+
+    // Extract text from PDF if PDF data is provided
+    let pageText = "";
+    if (pdfData) {
+      // Convert base64 to Uint8Array if needed
+      let pdfBytes: Uint8Array;
+      if (typeof pdfData === 'string') {
+        // Remove data URL prefix if present
+        const base64Data = pdfData.replace(/^data:application\/pdf;base64,/, '');
+        pdfBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      } else {
+        pdfBytes = new Uint8Array(pdfData);
+      }
+      
+      const fullText = await extractTextFromPDF(pdfBytes);
+      
+      // Extract text for the specific page
+      const pageStartMarker = `--- PAGE ${pageNumber} ---`;
+      const pageEndMarker = pageNumber < fullText.split('--- PAGE').length - 1 
+        ? `--- PAGE ${pageNumber + 1} ---` 
+        : null;
+      
+      const startIndex = fullText.indexOf(pageStartMarker);
+      if (startIndex !== -1) {
+        const pageContentStart = startIndex + pageStartMarker.length;
+        const endIndex = pageEndMarker ? fullText.indexOf(pageEndMarker) : fullText.length;
+        pageText = fullText.substring(pageContentStart, endIndex).trim();
+      }
+    }
+
+    if (!pageText) {
+      throw new Error('No text extracted from PDF');
+    }
 
     const extractionSchema = {
       type: "function",
@@ -62,20 +125,15 @@ serve(async (req) => {
       }
     };
 
-    // Build few-shot examples section if available
-    let fewShotSection = "";
-    if (fewShotExamples && fewShotExamples.length > 0) {
-      fewShotSection = `\n\n### ADDITIONAL FEW-SHOT EXAMPLES FROM MANUALLY CORRECTED DATA:\nThese are examples of correctly extracted citations from this document. Learn from these patterns:\n\n${JSON.stringify(fewShotExamples, null, 2)}\n\nApply the same extraction patterns and accuracy standards shown in these examples.`;
-    }
-
+    // Your original prompt, but optimized for text-only processing
     const systemPrompt = `You analyze legal document pages and extract citations into JSON.
 Input may contain:
 • ONE PAGE at a time
 • OR a BATCH of pages (up to 10) formatted as:
 --- PAGE 1 ---
-{text or image}
+{text}
 --- PAGE 2 ---
-{text or image}
+{text}
 ...
 
 Always treat pages as separate unless continuity rules apply.
@@ -147,13 +205,6 @@ If only part of a Non-Bates Exhibit is visible:
 • Always label as "Non-Bates Exhibits".
 
 ────────────────────────────────────────────────────
-HIGHLIGHTING RULES
-────────────────────────────────────────────────────
-• Only highlight once for each unique relevant sentence.
-• If a sentence appears multiple times, highlight only one instance.
-• Highlight must be lightly faded and aligned precisely to text.
-
-────────────────────────────────────────────────────
 SPLITTING RULES
 ────────────────────────────────────────────────────
 • Citations separated by semicolons (;) MUST be split into separate rows.
@@ -214,15 +265,9 @@ SCENARIO 8: Footnote Conversation
 • Others: 'nan'
 
 ────────────────────────────────────────────────────
-HIGHLIGHTING RULES (FOR VISUAL PAGES)
-────────────────────────────────────────────────────
-• All highlights must be slightly faded (low opacity) to keep text readable.
-• Highlight only the exact relevant text, not entire lines or blocks.
-
-────────────────────────────────────────────────────
 FEW-SHOT EXAMPLES FROM CORRECTIONS
 ────────────────────────────────────────────────────
-${fewShotExamples && fewShotExamples.length > 0 ? 
+ ${fewShotExamples && fewShotExamples.length > 0 ? 
   `Learn from these manually corrected examples:\n${JSON.stringify(fewShotExamples, null, 2)}\n\nApply the same patterns and accuracy.` : 
   'No correction examples yet.'}
 
@@ -256,28 +301,24 @@ Return ONLY valid JSON:
 
 Only return JSON. No explanations or markdown.`;
 
-    // Step 1: Initial Extraction using Lovable AI with GPT-5 Nano for speed
-    console.log('Step 1: Initial extraction with GPT-5 Nano...');
-    const extractResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Single API call for extraction with text-only input
+    console.log('Extracting citations from PDF text...');
+    const extractResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-5-nano',
+        model: 'gpt-5-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `Raw text content of Page ${pageNumber}:\n\n${pageText}\n\nExtract all citations.` },
-              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${pageImage}`, detail: 'high' } }
-            ]
-          }
+          { role: 'user', content: `Page ${pageNumber} text:\n\n${pageText}` }
         ],
         tools: [extractionSchema],
-        tool_choice: { type: "function", function: { name: "extract_citations" } }
+        tool_choice: { type: "function", function: { name: "extract_citations" } },
+        max_tokens: 2000,
+        temperature: 0.0
       }),
     });
 
@@ -288,72 +329,36 @@ Only return JSON. No explanations or markdown.`;
     }
 
     const extractData = await extractResponse.json();
-    const initialExtraction = extractData.choices[0].message.tool_calls?.[0]?.function?.arguments;
+    const extractionResult = extractData.choices[0].message.tool_calls?.[0]?.function?.arguments;
     
-    if (!initialExtraction) {
+    if (!extractionResult) {
       console.error('No tool call in extraction response');
       throw new Error('Failed to extract citations');
     }
 
-    console.log('Initial extraction complete');
-
-    // Step 2: Validation
-    console.log('Step 2: Validation...');
-    const validationPrompt = `You are a legal data extraction auditor. Your task is to rigorously validate and correct a previously extracted list of citations against the provided raw page content (text and image).
-
-**CRITICAL RULES FOR AUDIT AND CORRECTION:**
-1.  **Strict Adherence to Rules:** Re-apply every rule from the original extraction prompt (especially terminology: "Depositions" not "deponent", "Non-Bates Exhibits" not "Exhibits").
-2.  **Completeness:** Check if any citations present in the raw text/image were missed in the JSON. If missing, add them.
-3.  **Accuracy:** Verify all fields (BatesBegin, BatesEnd, Pinpoint, Non-Bates Exhibits, Code Lines, etc.) are accurately transcribed and correctly categorized.
-4.  **Data Type & Format:** Ensure the final JSON strictly conforms to the schema (e.g., 'Paragraph No.' must be integer, empty fields must be "" not "nan").
-5.  **Memory Section:** Validate the memory section includes last_paragraph_number_used, incomplete_exhibit_detected, raw_text, and last_page_processed.
-6.  **Remove Empty Rows:** If a row contains ALL blank fields, do NOT include it in the output.
-
-**Your output MUST be a complete, correct, and valid JSON object conforming to the same schema.**
-
-Initial extraction result to validate:
-${initialExtraction}`;
-
-    const validateResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-5-nano',
-        messages: [
-          { role: 'system', content: validationPrompt },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `Raw text content of Page ${pageNumber}:\n\n${pageText}` },
-              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${pageImage}`, detail: 'high' } }
-            ]
-          }
-        ],
-        tools: [extractionSchema],
-        tool_choice: { type: "function", function: { name: "extract_citations" } }
-      }),
-    });
-
-    if (!validateResponse.ok) {
-      const errorText = await validateResponse.text();
-      console.error('OpenAI validation error:', validateResponse.status, errorText);
-      throw new Error(`OpenAI validation failed: ${validateResponse.status}`);
-    }
-
-    const validateData = await validateResponse.json();
-    const validatedExtraction = validateData.choices[0].message.tool_calls?.[0]?.function?.arguments;
+    console.log(`Extraction complete for page ${pageNumber}`);
     
-    if (!validatedExtraction) {
-      console.error('No tool call in validation response');
-      throw new Error('Failed to validate citations');
-    }
-
-    console.log(`Validation complete for page ${pageNumber}`);
+    const result = JSON.parse(extractionResult);
     
-    const result = JSON.parse(validatedExtraction);
+    // Optional lightweight validation if needed
+    if (!skipValidation && result.citations && result.citations.length > 0) {
+      console.log('Performing lightweight validation...');
+      
+      // Quick validation to ensure required fields exist and have correct types
+      result.citations = result.citations.filter(citation => {
+        // Remove empty rows
+        const hasContent = Object.values(citation).some(val => 
+          val !== "" && val !== null && val !== undefined
+        );
+        
+        // Ensure paragraph number is integer
+        if (citation["Paragraph No."] !== undefined) {
+          citation["Paragraph No."] = parseInt(citation["Paragraph No."]) || null;
+        }
+        
+        return hasContent;
+      });
+    }
     
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

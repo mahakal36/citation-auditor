@@ -10,6 +10,7 @@ interface PdfHighlightLayerProps {
   viewport: any;
   hoveredCitation: number | null;
   scale?: number;
+  searchTerm?: string;
 }
 
 interface Highlight {
@@ -30,23 +31,55 @@ export const PdfHighlightLayer = ({
   viewport,
   hoveredCitation,
   scale = 1,
+  searchTerm = "",
 }: PdfHighlightLayerProps) => {
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [searchHighlights, setSearchHighlights] = useState<Highlight[]>([]);
 
+  const normalize = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\s\-]/g, "")
+      .trim();
+
+  // -------------------------------------------------------------------
+  // CLEAN + CONSISTENT BOUNDING BOX
+  // -------------------------------------------------------------------
+  const getBoundingBox = (items: any[]): Highlight => {
+    const xs = items.map(i => i.transform[4]);
+    const widths = items.map(i => i.width);
+    const baselines = items.map(i => i.transform[5]);
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs.map((x, i) => x + widths[i]));
+
+    const first = items[0];
+    const textHeight =
+      first.height ||
+      Math.abs(first.transform[3]) ||
+      12;
+
+    const minBaseline = Math.min(...baselines);
+
+    return {
+      left: minX,
+      top: pageHeight - minBaseline - textHeight,
+      width: maxX - minX,
+      height: textHeight,
+      citationIndex: -1,
+      text: "",
+    };
+  };
+
+  // -------------------------------------------------------------------
+  // CITATION HIGHLIGHTING (NO DUPLICATE MATCHES)
+  // -------------------------------------------------------------------
   useEffect(() => {
     if (!textContent || !viewport) return;
 
-    const newHighlights: Highlight[] = [];
     const textItems = textContent.items;
-
-    // Normalize text for better matching
-    const normalizeText = (text: string) => {
-      return text
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .replace(/[^\w\s\-]/g, '')
-        .trim();
-    };
+    const newHighlights: Highlight[] = [];
 
     citations.forEach((citation, citationIndex) => {
       const searchTexts = [
@@ -57,58 +90,46 @@ export const PdfHighlightLayer = ({
         citation.Pinpoint,
         citation["Code Lines"],
         citation.cites,
-      ].filter((text) => text && text !== "nan" && text.length > 3);
+      ].filter(t => t && t !== "nan" && t.length > 3);
 
-      searchTexts.forEach((searchText) => {
-        const normalizedSearch = normalizeText(searchText);
-        const searchWords = normalizedSearch.split(' ').filter(w => w.length > 2);
-        
-        // Try to find consecutive text items that form the search string
-        for (let startIdx = 0; startIdx < textItems.length; startIdx++) {
-          let combinedText = '';
+      searchTexts.forEach(searchText => {
+        const normalizedSearch = normalize(searchText);
+        const parts = normalizedSearch.split(" ").filter(w => w.length > 2);
+
+        let start = 0;
+
+        while (start < textItems.length) {
+          let combo = "";
           let matchedItems: any[] = [];
-          
-          // Look ahead to combine multiple text items (up to 10 items)
-          for (let endIdx = startIdx; endIdx < Math.min(startIdx + 10, textItems.length); endIdx++) {
-            const item = textItems[endIdx];
+          let matched = false;
+
+          for (let end = start; end < Math.min(start + 10, textItems.length); end++) {
+            const item = textItems[end];
             if (!item.str) continue;
-            
-            combinedText += ' ' + item.str;
+
+            combo += " " + item.str;
             matchedItems.push(item);
-            
-            const normalizedCombined = normalizeText(combinedText);
-            
-            // Check if we have a match (either exact or all words present)
-            if (normalizedCombined.includes(normalizedSearch) || 
-                (searchWords.length > 1 && searchWords.every(word => normalizedCombined.includes(word)))) {
-              
-              // Calculate bounding box for all matched items
-              const transforms = matchedItems.map(i => i.transform);
-              const xs = transforms.map(t => t[4]);
-              const ys = transforms.map(t => t[5]);
-              const widths = matchedItems.map(i => i.width || 100);
-              const heights = matchedItems.map((i, idx) => 
-                Math.sqrt(transforms[idx][2] * transforms[idx][2] + transforms[idx][3] * transforms[idx][3])
-              );
-              
-              const minX = Math.min(...xs);
-              const maxX = Math.max(...xs.map((x, i) => x + widths[i]));
-              const minY = Math.min(...ys);
-              const maxHeight = Math.max(...heights);
-              
-              // Store raw coordinates (will be scaled during render)
-              newHighlights.push({
-                left: minX,
-                top: pageHeight - minY - maxHeight,
-                width: maxX - minX,
-                height: maxHeight,
-                citationIndex,
-                text: searchText,
-              });
-              
-              break; // Found match, stop looking for this search text
+
+            const normCombo = normalize(combo);
+
+            const hit =
+              normCombo.includes(normalizedSearch) ||
+              (parts.length > 1 && parts.every(w => normCombo.includes(w)));
+
+            if (hit) {
+              const box = getBoundingBox(matchedItems);
+              box.citationIndex = citationIndex;
+              box.text = searchText;
+
+              newHighlights.push(box);
+
+              start = end + 1; // IMPORTANT: prevents duplicates
+              matched = true;
+              break;
             }
           }
+
+          if (!matched) start++;
         }
       });
     });
@@ -116,50 +137,119 @@ export const PdfHighlightLayer = ({
     setHighlights(newHighlights);
   }, [citations, textContent, viewport, pageHeight]);
 
-  // Generate color based on citation index
+  // -------------------------------------------------------------------
+  // SEARCH TERM HIGHLIGHTING (NO DUPLICATE MATCHES)
+  // -------------------------------------------------------------------
+  useEffect(() => {
+    if (!textContent || !viewport || !searchTerm || searchTerm.trim().length < 2) {
+      setSearchHighlights([]);
+      return;
+    }
+
+    const textItems = textContent.items;
+    const normalizedSearch = normalize(searchTerm);
+    const parts = normalizedSearch.split(" ").filter(w => w.length > 2);
+
+    const results: Highlight[] = [];
+    let start = 0;
+
+    while (start < textItems.length) {
+      let combo = "";
+      let matchedItems: any[] = [];
+      let matched = false;
+
+      for (let end = start; end < Math.min(start + 10, textItems.length); end++) {
+        const item = textItems[end];
+        if (!item.str) continue;
+
+        combo += " " + item.str;
+        matchedItems.push(item);
+
+        const normCombo = normalize(combo);
+
+        const hit =
+          normCombo.includes(normalizedSearch) ||
+          (parts.length > 1 && parts.every(w => normCombo.includes(w)));
+
+        if (hit) {
+          const box = getBoundingBox(matchedItems);
+          box.text = searchTerm;
+
+          results.push(box);
+
+          start = end + 1; // skip ahead to prevent duplicates
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) start++;
+    }
+
+    setSearchHighlights(results);
+  }, [searchTerm, textContent, viewport, pageHeight]);
+
+  // -------------------------------------------------------------------
+  // COLOR FOR CITATIONS (SOFTER)
+  // -------------------------------------------------------------------
   const getColor = (index: number) => {
     const colors = [
-      "rgba(255, 235, 59, 0.4)",  // Yellow
-      "rgba(76, 175, 80, 0.4)",   // Green
-      "rgba(33, 150, 243, 0.4)",  // Blue
-      "rgba(255, 152, 0, 0.4)",   // Orange
-      "rgba(156, 39, 176, 0.4)",  // Purple
-      "rgba(244, 67, 54, 0.4)",   // Red
+      "rgba(255, 235, 59, 0.2)",
+      "rgba(76, 175, 80, 0.2)",
+      "rgba(33, 150, 243, 0.2)",
+      "rgba(255, 152, 0, 0.2)",
+      "rgba(156, 39, 176, 0.2)",
+      "rgba(244, 67, 54, 0.2)",
     ];
     return colors[index % colors.length];
   };
 
-  // Scale dimensions with zoom level
-  const scaledWidth = pageWidth * scale;
-  const scaledHeight = pageHeight * scale;
-
   return (
     <div
       className="absolute top-0 left-0 pointer-events-none"
-      style={{ width: scaledWidth, height: scaledHeight }}
+      style={{ width: pageWidth * scale, height: pageHeight * scale }}
     >
-      {highlights.map((highlight, idx) => (
+
+      {/* SEARCH HIGHLIGHTS */}
+      {searchHighlights.map((h, i) => (
         <div
-          key={idx}
+          key={`search-${i}`}
+          className="absolute"
+          style={{
+            left: h.left * scale,
+            top: h.top * scale,
+            width: h.width * scale,
+            height: h.height * scale,
+            backgroundColor: "rgba(255, 255, 0, 0.08)",
+            border: "1px solid rgba(255, 255, 0, 0.15)",
+            zIndex: 20,
+          }}
+        />
+      ))}
+
+      {/* CITATION HIGHLIGHTS */}
+      {highlights.map((h, i) => (
+        <div
+          key={`citation-${i}`}
           className="absolute transition-all duration-200"
           style={{
-            left: highlight.left * scale,
-            top: highlight.top * scale,
-            width: highlight.width * scale,
-            height: highlight.height * scale,
-            backgroundColor: getColor(highlight.citationIndex),
+            left: h.left * scale,
+            top: h.top * scale,
+            width: h.width * scale,
+            height: h.height * scale,
+            backgroundColor: getColor(h.citationIndex),
             border:
-              hoveredCitation === highlight.citationIndex
-                ? "2px solid rgba(0, 0, 0, 0.5)"
+              hoveredCitation === h.citationIndex
+                ? "2px solid rgba(0,0,0,0.4)"
                 : "none",
-            opacity: hoveredCitation === null || hoveredCitation === highlight.citationIndex ? 1 : 0.3,
+            opacity:
+              hoveredCitation === null || hoveredCitation === h.citationIndex
+                ? 1
+                : 0.35,
             transform:
-              hoveredCitation === highlight.citationIndex
-                ? "scale(1.05)"
-                : "scale(1)",
-            zIndex: hoveredCitation === highlight.citationIndex ? 10 : 1,
+              hoveredCitation === h.citationIndex ? "scale(1.04)" : "scale(1)",
+            zIndex: hoveredCitation === h.citationIndex ? 30 : 10,
           }}
-          title={`Citation ${highlight.citationIndex + 1}: ${highlight.text}`}
         />
       ))}
     </div>
