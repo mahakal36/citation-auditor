@@ -6,7 +6,7 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { CitationEntry } from "@/types/citation";
 import { useEffect, useRef } from "react";
 
@@ -69,7 +69,7 @@ export const CitationTable = ({
           const text = e.currentTarget.textContent || "";
           handleCellEdit(rowIndex, columnId, text);
         }}
-        className="w-full h-full px-1 py-0.5 text-[10px] outline-none"
+        className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors"
       />
     );
   };
@@ -84,22 +84,6 @@ export const CitationTable = ({
     );
   };
 
-  const handleAddRow = () => {
-    const emptyRow: CitationEntry = {
-      "Non-Bates Exhibits": "nan",
-      Depositions: "nan",
-      date: "nan",
-      cites: "nan",
-      BatesBegin: "nan",
-      BatesEnd: "nan",
-      Pinpoint: "nan",
-      "Code Lines": "nan",
-      "Report Name": data[0]?.["Report Name"] || "",
-      "Paragraph No.": 0,
-    };
-    onDataChange([...data, emptyRow]);
-  };
-
   const handleDeleteRow = (rowIndex: number) => {
     const newData = data.filter((_, index) => index !== rowIndex);
     onDataChange(newData);
@@ -109,56 +93,67 @@ export const CitationTable = ({
     columnHelper.accessor("Non-Bates Exhibits", {
       header: "Non-Bates Exhibits",
       cell: (info) => renderEditableCell(info, "Non-Bates Exhibits"),
+      size: 140,
     }),
     columnHelper.accessor("Depositions", {
       header: "Depositions",
       cell: (info) => renderEditableCell(info, "Depositions"),
+      size: 100,
     }),
     columnHelper.accessor("date", {
       header: "Date",
       cell: (info) => renderEditableCell(info, "date"),
+      size: 80,
     }),
     columnHelper.accessor("cites", {
       header: "Cites",
       cell: (info) => renderEditableCell(info, "cites"),
+      size: 80,
     }),
     columnHelper.accessor("BatesBegin", {
       header: "Bates Begin",
       cell: (info) => renderEditableCell(info, "BatesBegin"),
+      size: 100,
     }),
     columnHelper.accessor("BatesEnd", {
       header: "Bates End",
       cell: (info) => renderEditableCell(info, "BatesEnd"),
+      size: 100,
     }),
     columnHelper.accessor("Pinpoint", {
       header: "Pinpoint",
       cell: (info) => renderEditableCell(info, "Pinpoint"),
+      size: 80,
     }),
     columnHelper.accessor("Code Lines", {
       header: "Code Lines",
       cell: (info) => renderEditableCell(info, "Code Lines"),
+      size: 80,
     }),
     columnHelper.accessor("Report Name", {
       header: "Report Name",
       cell: (info) => renderEditableCell(info, "Report Name"),
+      size: 120,
     }),
     {
       id: "Paragraph No.",
       accessorFn: (row) => row["Paragraph No."],
-      header: "Para. No.",
+      header: "Para.",
       cell: (info) => renderEditableCell(info, "Paragraph No."),
+      size: 50,
     },
     columnHelper.display({
       id: "actions",
       header: "",
+      size: 40,
       cell: (info) => (
         <Button
           variant="ghost"
           size="icon"
           onClick={() => handleDeleteRow(info.row.index)}
-          className="text-destructive hover:text-destructive"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-3.5 h-3.5" />
         </Button>
       ),
     }),
@@ -171,16 +166,17 @@ export const CitationTable = ({
   });
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
-      <div className="border rounded-md overflow-auto flex-1 max-h-[calc(100vh-400px)]">
-        <table className="w-full border-collapse text-[10px]">
-          <thead className="bg-muted sticky top-0 z-10">
+    <div className="h-full flex flex-col">
+      <div className="border rounded-md overflow-auto flex-1">
+        <table className="w-full border-collapse text-xs">
+          <thead className="bg-muted/80 sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="border p-1 text-left text-[10px] font-medium whitespace-nowrap"
+                    className="border-b border-r last:border-r-0 px-2 py-2 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                    style={{ width: header.column.getSize() }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
@@ -193,12 +189,16 @@ export const CitationTable = ({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="hover:bg-muted/50 transition-colors"
+                className="hover:bg-muted/40 transition-colors"
                 onMouseEnter={() => onRowHover?.(row.index)}
                 onMouseLeave={() => onRowHover?.(null)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border p-0.5">
+                  <td 
+                    key={cell.id} 
+                    className="border-b border-r last:border-r-0 p-0 align-top"
+                    style={{ width: cell.column.getSize() }}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -208,13 +208,8 @@ export const CitationTable = ({
         </table>
       </div>
 
-      <Button onClick={handleAddRow} variant="outline" size="sm" className="gap-2">
-        <Plus className="w-4 h-4" />
-        Add Row
-      </Button>
-
-      <p className="text-xs text-muted-foreground">
-        Total: {data.length} citations
+      <p className="text-xs text-muted-foreground mt-2 shrink-0">
+        {data.length} citation{data.length !== 1 ? 's' : ''}
       </p>
     </div>
   );

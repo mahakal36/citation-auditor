@@ -7,9 +7,10 @@ import { CitationTable } from "@/components/CitationTable";
 import { PdfHighlightLayer } from "@/components/PdfHighlightLayer";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ChevronLeft, ChevronRight, Upload, Download, Sparkles, ZoomIn, ZoomOut, RotateCcw, Save, FileStack } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Download, Sparkles, ZoomIn, ZoomOut, RotateCcw, Save, FileStack, Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { CitationEntry } from "@/types/citation";
+import logo from "@/assets/logo.png";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -78,61 +79,45 @@ const Index = () => {
 
     setIsExtracting(true);
     try {
-      // Load PDF and extract page text and image
       const arrayBuffer = await pdfFile.arrayBuffer();
       const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
       const page = await pdf.getPage(pageNumber);
       
-      // Extract text
       const textContent = await page.getTextContent();
       const pageText = textContent.items
         .map((item: any) => item.str)
         .join(" ");
 
-      // Render page as image
-      const viewport = page.getViewport({ scale: 3 });
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      if (context) {
-        await page.render({ canvasContext: context, viewport }).promise;
-        const pageImage = canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
-
-        // Call backend for extraction
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                pageText,
-                pageImage,
-                pageNumber,
-                reportName: pdfFile.name,
-                fewShotExamples: fewShotExamples.slice(-5), // Send last 5 corrected examples
-              }),
-            }
-          );
-
-        if (!response.ok) {
-          throw new Error("Extraction failed");
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pageText,
+            pageNumber,
+            reportName: pdfFile.name,
+            fewShotExamples: fewShotExamples.slice(-5),
+          }),
         }
+      );
 
-        const data = await response.json();
-        setPageData(prev => ({
-          ...prev,
-          [pageNumber]: data.citations || []
-        }));
-        
-        toast({
-          title: "Extraction Complete",
-          description: `Extracted ${data.citations?.length || 0} citations from page ${pageNumber}`,
-        });
+      if (!response.ok) {
+        throw new Error("Extraction failed");
       }
+
+      const data = await response.json();
+      setPageData(prev => ({
+        ...prev,
+        [pageNumber]: data.citations || []
+      }));
+      
+      toast({
+        title: "Extraction Complete",
+        description: `Extracted ${data.citations?.length || 0} citations from page ${pageNumber}`,
+      });
     } catch (error) {
       console.error("Extraction error:", error);
       toast({
@@ -143,7 +128,7 @@ const Index = () => {
     } finally {
       setIsExtracting(false);
     }
-  }, [pdfFile, pageNumber, toast]);
+  }, [pdfFile, pageNumber, fewShotExamples, toast]);
 
   const handleSavePageData = useCallback(() => {
     if (currentData.length === 0) {
@@ -193,39 +178,27 @@ const Index = () => {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((item: any) => item.str).join(" ");
-        
-        const viewport = page.getViewport({ scale: 3 });
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
 
-        if (context) {
-          await page.render({ canvasContext: context, viewport }).promise;
-          const pageImage = canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
-
-           const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                pageText,
-                pageImage,
-                pageNumber: i,
-                reportName: pdfFile.name,
-                fewShotExamples: fewShotExamples.slice(-5),
-              }),
-            }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            setPageData(prev => ({
-              ...prev,
-              [i]: data.citations || []
-            }));
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-citations`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pageText,
+              pageNumber: i,
+              reportName: pdfFile.name,
+              fewShotExamples: fewShotExamples.slice(-5),
+            }),
           }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setPageData(prev => ({
+            ...prev,
+            [i]: data.citations || []
+          }));
         }
       }
       
@@ -243,7 +216,7 @@ const Index = () => {
     } finally {
       setIsBatchProcessing(false);
     }
-  }, [pdfFile, pageNumber, numPages, toast]);
+  }, [pdfFile, pageNumber, numPages, fewShotExamples, toast]);
 
   const handleDownloadCSV = useCallback(() => {
     if (allSavedData.length === 0) {
@@ -299,7 +272,6 @@ const Index = () => {
       const data = await response.json();
       
       if (data.category !== "Uncategorized") {
-        // Create new citation entry
         const newEntry: CitationEntry = {
           "Non-Bates Exhibits": "",
           "Depositions": "",
@@ -313,7 +285,6 @@ const Index = () => {
           "Paragraph No.": 0,
         };
 
-        // Handle Bates Range specially
         if (data.category === "Bates Range" && data.batesBegin && data.batesEnd) {
           newEntry.BatesBegin = data.batesBegin;
           newEntry.BatesEnd = data.batesEnd;
@@ -328,7 +299,6 @@ const Index = () => {
             description: `Begin: ${data.batesBegin}, End: ${data.batesEnd}`,
           });
         } else {
-          // Handle other categories
           const fieldMap: Record<string, keyof CitationEntry> = {
             "Non-Bates Exhibits": "Non-Bates Exhibits",
             "Depositions": "Depositions",
@@ -380,120 +350,156 @@ const Index = () => {
     }
   }, [pdfFile, pageNumber, toast]);
 
+  const handleAddRawRow = useCallback(() => {
+    const emptyRow: CitationEntry = {
+      "Non-Bates Exhibits": "",
+      "Depositions": "",
+      "date": "",
+      "cites": "",
+      "BatesBegin": "",
+      "BatesEnd": "",
+      "Pinpoint": "",
+      "Code Lines": "",
+      "Report Name": pdfFile?.name || "",
+      "Paragraph No.": 0,
+    };
+    setPageData(prev => ({
+      ...prev,
+      [pageNumber]: [...(prev[pageNumber] || []), emptyRow],
+    }));
+    toast({
+      title: "Row Added",
+      description: "Empty row added to the table",
+    });
+  }, [pdfFile, pageNumber, toast]);
+
+  const handleClearAll = useCallback(() => {
+    setPageData(prev => ({
+      ...prev,
+      [pageNumber]: []
+    }));
+    toast({
+      title: "Cleared",
+      description: "All citations cleared from this page",
+    });
+  }, [pageNumber, toast]);
+
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
-        <div className="container mx-auto px-4 py-3 max-w-[1800px]">
-          {/* Compact Header */}
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+      <div className="h-screen bg-background flex flex-col overflow-hidden">
+        {/* Compact Header */}
+        <header className="flex items-center justify-between px-4 py-2 border-b bg-card shrink-0">
+          <div className="flex items-center gap-2">
+            <img src={logo} alt="Logo" className="w-7 h-7" />
+            <h1 className="text-base font-semibold tracking-tight text-foreground">
               Exhibit Extraction
             </h1>
-            
-            <div className="flex items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <label htmlFor="pdf-upload" className="cursor-pointer">
-                    <div className="flex items-center justify-center w-9 h-9 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                      <Upload className="w-4 h-4" />
-                    </div>
-                    <Input
-                      id="pdf-upload"
-                      type="file"
-                      accept=".pdf"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </TooltipTrigger>
-                <TooltipContent>Upload PDF</TooltipContent>
-              </Tooltip>
-
-              {pdfFile && (
-                <>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={extractPageData}
-                        disabled={isExtracting || isBatchProcessing}
-                        size="icon"
-                        className="w-9 h-9"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{isExtracting ? "Extracting..." : "Extract Page"}</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={extractBatchPages}
-                        disabled={isExtracting || isBatchProcessing}
-                        variant="outline"
-                        size="icon"
-                        className="w-9 h-9"
-                      >
-                        <FileStack className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{isBatchProcessing ? "Processing..." : "Extract 10 Pages"}</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleSavePageData}
-                        variant="secondary"
-                        size="icon"
-                        className="w-9 h-9"
-                        disabled={currentData.length === 0}
-                      >
-                        <Save className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Save Page Data</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleDownloadCSV}
-                        variant="outline"
-                        size="icon"
-                        className="w-9 h-9 relative"
-                        disabled={allSavedData.length === 0}
-                      >
-                        <Download className="w-4 h-4" />
-                        {allSavedData.length > 0 && (
-                          <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-                            {allSavedData.length}
-                          </span>
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Download Excel ({allSavedData.length})</TooltipContent>
-                  </Tooltip>
-                  
-                  <span className="text-xs text-muted-foreground ml-2 truncate max-w-[150px]" title={pdfFile.name}>
-                    {pdfFile.name}
-                  </span>
-                </>
-              )}
-            </div>
           </div>
+          
+          <div className="flex items-center gap-1.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label htmlFor="pdf-upload" className="cursor-pointer">
+                  <div className="flex items-center justify-center w-8 h-8 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <Input
+                    id="pdf-upload"
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </TooltipTrigger>
+              <TooltipContent>Upload PDF</TooltipContent>
+            </Tooltip>
 
-          {/* Main Content */}
-          {pdfFile && (
-            <ResizablePanelGroup direction="horizontal" className="h-[calc(100vh-64px)] rounded-lg border">
+            {pdfFile && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={extractPageData}
+                      disabled={isExtracting || isBatchProcessing}
+                      size="icon"
+                      className="w-8 h-8"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isExtracting ? "Extracting..." : "Extract Page"}</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={extractBatchPages}
+                      disabled={isExtracting || isBatchProcessing}
+                      variant="outline"
+                      size="icon"
+                      className="w-8 h-8"
+                    >
+                      <FileStack className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isBatchProcessing ? "Processing..." : "Extract 10 Pages"}</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleSavePageData}
+                      variant="secondary"
+                      size="icon"
+                      className="w-8 h-8"
+                      disabled={currentData.length === 0}
+                    >
+                      <Save className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Save Page Data</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleDownloadCSV}
+                      variant="outline"
+                      size="icon"
+                      className="w-8 h-8 relative"
+                      disabled={allSavedData.length === 0}
+                    >
+                      <Download className="w-4 h-4" />
+                      {allSavedData.length > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                          {allSavedData.length}
+                        </span>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Download Excel ({allSavedData.length})</TooltipContent>
+                </Tooltip>
+                
+                <span className="text-xs text-muted-foreground ml-2 truncate max-w-[120px]" title={pdfFile.name}>
+                  {pdfFile.name}
+                </span>
+              </>
+            )}
+          </div>
+        </header>
+
+        {/* Main Content */}
+        {pdfFile ? (
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
             {/* PDF Viewer - Scrollable */}
-            <ResizablePanel defaultSize={50} minSize={30}>
-              <div className="bg-card h-full flex flex-col overflow-hidden">
-                {/* Fixed Header */}
-                <div className="p-3 border-b bg-card/95 backdrop-blur-sm shrink-0">
+            <ResizablePanel defaultSize={45} minSize={30}>
+              <div className="h-full flex flex-col overflow-hidden bg-muted/30">
+                {/* Fixed PDF Header */}
+                <div className="px-3 py-2 border-b bg-card shrink-0">
                   <div className="flex items-center justify-between gap-2">
                     {/* Progress & Page Navigation */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1 text-xs">
                         <span className="text-primary font-medium">
                           {numPages > 0 ? Math.round((pageNumber / numPages) * 100) : 0}%
@@ -515,7 +521,7 @@ const Index = () => {
                         <span className="text-muted-foreground">of {numPages}</span>
                       </div>
                       
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -548,7 +554,7 @@ const Index = () => {
                     </div>
 
                     {/* Zoom Controls */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5">
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -562,7 +568,7 @@ const Index = () => {
                         </TooltipTrigger>
                         <TooltipContent>Zoom Out</TooltipContent>
                       </Tooltip>
-                      <span className="text-xs text-muted-foreground min-w-[36px] text-center">
+                      <span className="text-xs text-muted-foreground min-w-[32px] text-center">
                         {Math.round(pdfScale * 100)}%
                       </span>
                       <Tooltip>
@@ -597,13 +603,13 @@ const Index = () => {
                 
                 {/* Scrollable PDF Container */}
                 <div 
-                  className="flex-1 overflow-auto bg-muted/20"
+                  className="flex-1 overflow-auto relative"
                   onMouseUp={handleTextSelection}
                 >
                   {isClassifying && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-background/80 rounded-lg p-3 flex items-center gap-2">
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-card border shadow-lg rounded-lg px-4 py-2 flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      <span className="text-sm">Classifying...</span>
+                      <span className="text-sm font-medium">Analyzing...</span>
                     </div>
                   )}
                   <Document
@@ -617,7 +623,7 @@ const Index = () => {
                         renderTextLayer={true}
                         renderAnnotationLayer={true}
                         scale={pdfScale}
-                        className="max-w-full shadow-lg"
+                        className="shadow-lg"
                         onLoadSuccess={onPageLoadSuccess}
                       />
                       {pageTextContent && pageViewport && currentData.length > 0 && (
@@ -641,39 +647,48 @@ const Index = () => {
             <ResizableHandle withHandle />
 
             {/* Citation Data - Fixed Panel */}
-            <ResizablePanel defaultSize={50} minSize={30}>
-              <div className="bg-card h-full flex flex-col overflow-hidden">
+            <ResizablePanel defaultSize={55} minSize={35}>
+              <div className="h-full flex flex-col overflow-hidden bg-card">
                 {/* Fixed Header */}
-                <div className="p-3 border-b bg-card/95 backdrop-blur-sm shrink-0">
+                <div className="px-3 py-2 border-b shrink-0">
                   <div className="flex justify-between items-center">
                     <h2 className="text-sm font-semibold">
                       Extracted Citations (Page {pageNumber})
                     </h2>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {(isExtracting || isBatchProcessing) && (
-                        <div className="flex items-center gap-2 text-xs text-primary">
+                        <div className="flex items-center gap-1.5 text-xs text-primary mr-2">
                           <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                           <span>{isBatchProcessing ? "Processing batch..." : "Extracting..."}</span>
                         </div>
                       )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={handleAddRawRow}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Add Raw Row</TooltipContent>
+                      </Tooltip>
                       {currentData.length > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setPageData(prev => ({
-                              ...prev,
-                              [pageNumber]: []
-                            }));
-                            toast({
-                              title: "Cleared",
-                              description: "All citations cleared from this page",
-                            });
-                          }}
-                        >
-                          Clear All
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={handleClearAll}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Clear All</TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
@@ -715,18 +730,17 @@ const Index = () => {
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
-        )}
-
-          {!pdfFile && (
-            <div className="text-center py-16">
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
               <Upload className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
               <h3 className="text-lg font-semibold mb-1">No PDF Uploaded</h3>
               <p className="text-sm text-muted-foreground">
                 Upload a legal document to start extracting citations
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );

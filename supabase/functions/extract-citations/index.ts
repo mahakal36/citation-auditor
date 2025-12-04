@@ -1,6 +1,5 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getDocument } from "https://deno.land/x/pdfjs@2.12.313/dist/pdf.js";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,33 +9,17 @@ const corsHeaders = {
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const REPORT_NAME_PLACEHOLDER = "Legal Expert Report";
 
-// Function to extract text from PDF
-async function extractTextFromPDF(pdfData: Uint8Array): Promise<string> {
-  try {
-    // Load the PDF document
-    const loadingTask = getDocument({ data: pdfData });
-    const pdf = await loadingTask.promise;
-    
-    let fullText = "";
-    
-    // Extract text from each page
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      
-      // Combine text items
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      fullText += `\n--- PAGE ${pageNum} ---\n${pageText}\n`;
-    }
-    
-    return fullText;
-  } catch (error) {
-    console.error('Error extracting text from PDF:', error);
-    throw new Error('Failed to extract text from PDF');
-  }
+interface Citation {
+  "Non-Bates Exhibits": string;
+  "Depositions": string;
+  "date": string;
+  "cites": string;
+  "BatesBegin": string;
+  "BatesEnd": string;
+  "Pinpoint": string;
+  "Code Lines": string;
+  "Report Name": string;
+  "Paragraph No.": number;
 }
 
 serve(async (req) => {
@@ -45,41 +28,15 @@ serve(async (req) => {
   }
 
   try {
-    const { pdfData, pageNumber, reportName, fewShotExamples = [], skipValidation = true } = await req.json();
+    const { pageText, pageNumber, reportName, fewShotExamples = [], skipValidation = true } = await req.json();
     
-    console.log(`Processing PDF page ${pageNumber} for report: ${reportName}`);
+    console.log(`Processing page ${pageNumber} for report: ${reportName}`);
 
-    // Extract text from PDF if PDF data is provided
-    let pageText = "";
-    if (pdfData) {
-      // Convert base64 to Uint8Array if needed
-      let pdfBytes: Uint8Array;
-      if (typeof pdfData === 'string') {
-        // Remove data URL prefix if present
-        const base64Data = pdfData.replace(/^data:application\/pdf;base64,/, '');
-        pdfBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-      } else {
-        pdfBytes = new Uint8Array(pdfData);
-      }
-      
-      const fullText = await extractTextFromPDF(pdfBytes);
-      
-      // Extract text for the specific page
-      const pageStartMarker = `--- PAGE ${pageNumber} ---`;
-      const pageEndMarker = pageNumber < fullText.split('--- PAGE').length - 1 
-        ? `--- PAGE ${pageNumber + 1} ---` 
-        : null;
-      
-      const startIndex = fullText.indexOf(pageStartMarker);
-      if (startIndex !== -1) {
-        const pageContentStart = startIndex + pageStartMarker.length;
-        const endIndex = pageEndMarker ? fullText.indexOf(pageEndMarker) : fullText.length;
-        pageText = fullText.substring(pageContentStart, endIndex).trim();
-      }
-    }
-
-    if (!pageText) {
-      throw new Error('No text extracted from PDF');
+    if (!pageText || pageText.trim().length === 0) {
+      console.log('No text provided for extraction');
+      return new Response(JSON.stringify({ citations: [], memory: null }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const extractionSchema = {
@@ -125,18 +82,7 @@ serve(async (req) => {
       }
     };
 
-    // Your original prompt, but optimized for text-only processing
     const systemPrompt = `You analyze legal document pages and extract citations into JSON.
-Input may contain:
-• ONE PAGE at a time
-• OR a BATCH of pages (up to 10) formatted as:
---- PAGE 1 ---
-{text}
---- PAGE 2 ---
-{text}
-...
-
-Always treat pages as separate unless continuity rules apply.
 
 ────────────────────────────────────────────────────
 GENERAL EXTRACTION RULES
@@ -167,7 +113,6 @@ If the page(s) mention asserted patents or patents-in-suit:
 • Write ONE SENTENCE confirming their presence.
 • DO NOT extract individual patent numbers.
 • DO NOT extract pinpoint cites related to asserted patents.
-• If additional information appears with the patent number (e.g., "U.S. Patent No. 7,532,865 at 1:45–50") → do not extract that citation at all.
 
 ────────────────────────────────────────────────────
 TABLE OF CONTENTS RULE
@@ -182,11 +127,6 @@ PARAGRAPH CONTINUITY BETWEEN PAGES
 If the current page begins mid-sentence or without a new paragraph number:
 • Refer to the last full paragraph number from the previous page.
 • Use that number until a new paragraph number appears.
-
-Example:
-Page 10 ends with: "…therefore, Apple engaged in the following conduct¹⁰³"
-Page 11 begins with: "…that continued through 2022 and resulted in…"
-→ Citation ¹⁰³ maps to the last paragraph number from Page 10.
 
 ────────────────────────────────────────────────────
 "Id." HANDLING RULE
@@ -218,91 +158,58 @@ CITATION TYPE SCENARIOS
 SCENARIO 1: Bates Number(s) with Pinpoint ('at')
 • Input: "TOT00191801-16 at TOT00191805"
 • BatesBegin: start Bates
-• BatesEnd: end Bates (or 'nan' if single)
+• BatesEnd: end Bates (or '' if single)
 • Pinpoint: text/ID after 'at'
-• Others: 'nan'
 
 SCENARIO 2: Bates Range OR Single Bates (No Pinpoint)
 • Input: "TOT000189043" OR "TOT00189044-TOT00189059"
 • BatesBegin: start Bates (or single Bates)
-• BatesEnd: end Bates (or 'nan' if single)
-• Others: 'nan'
+• BatesEnd: end Bates (or '' if single)
 
 SCENARIO 3: Mixed Footnote (Text + Bates)
 • Input: "Conversation with X... see also TOT001-TOT005."
-• Row 1: Non-Bates Exhibits = "Conversation with X...", Bates = 'nan'
-• Row 2: BatesBegin = "TOT001", BatesEnd = "TOT005", Non-Bates Exhibits = 'nan'
+• Row 1: Non-Bates Exhibits = "Conversation with X...", Bates = ''
+• Row 2: BatesBegin = "TOT001", BatesEnd = "TOT005", Non-Bates Exhibits = ''
 
 SCENARIO 4: Code Lines
 • Pattern: "APPLE_INTEL_000015 at lines 3258-3285"
 • Pinpoint: Bates ID
 • Code Lines: line range
-• Others: 'nan'
 
 SCENARIO 5: Transcript/Rough Tr. Citations
 • Pattern: "Sebini.rough tr. at 23:21-25:1"
 • Non-Bates Exhibits: transcript name
 • Code Lines: page/line numbers
-• Others: 'nan'
 
 SCENARIO 6: URL / Standard / Treatise / Webpage
 • Rule: Code Lines takes ONLY the page/date. Non-Bates Exhibits takes EVERYTHING ELSE.
 • Input: "Qualcomm Ventures website, https://www.qualcommventures.com/, accessed August 16, 2024"
   - Non-Bates Exhibits: "Qualcomm Ventures website, https://www.qualcommventures.com/"
   - Code Lines: "accessed August 16, 2024"
-• Others: 'nan'
 
 SCENARIO 7: Deposition Citations
 • Pattern: "Prashant Vashi Deposition (3/28/24) at 35:17-36:22"
 • Depositions: name
 • date: date
 • cites: page/line cites
-• Others: 'nan'
 
 SCENARIO 8: Footnote Conversation
 • Input: "Conversation with Dr. Larson on August 22, 2024"
 • Non-Bates Exhibits: full text
-• Others: 'nan'
 
 ────────────────────────────────────────────────────
 FEW-SHOT EXAMPLES FROM CORRECTIONS
 ────────────────────────────────────────────────────
- ${fewShotExamples && fewShotExamples.length > 0 ? 
+${fewShotExamples && fewShotExamples.length > 0 ? 
   `Learn from these manually corrected examples:\n${JSON.stringify(fewShotExamples, null, 2)}\n\nApply the same patterns and accuracy.` : 
   'No correction examples yet.'}
 
 ────────────────────────────────────────────────────
 REQUIRED JSON OUTPUT FORMAT
 ────────────────────────────────────────────────────
-Return ONLY valid JSON:
+Return ONLY valid JSON via tool call.`;
 
-{
-  "citations": [
-    {
-      "Non-Bates Exhibits": "",
-      "Depositions": "",
-      "date": "",
-      "cites": "",
-      "BatesBegin": "",
-      "BatesEnd": "",
-      "Pinpoint": "",
-      "Code Lines": "",
-      "Report Name": "",
-      "Paragraph No.": <integer>
-    }
-  ],
-  "memory": {
-    "last_paragraph_number_used": <integer or null>,
-    "incomplete_exhibit_detected": true/false,
-    "raw_text": "<exact raw text of current page or last page in batch>",
-    "last_page_processed": <integer>
-  }
-}
-
-Only return JSON. No explanations or markdown.`;
-
-    // Single API call for extraction with text-only input
-    console.log('Extracting citations from PDF text...');
+    console.log('Extracting citations from page text...');
     const extractResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -317,8 +224,7 @@ Only return JSON. No explanations or markdown.`;
         ],
         tools: [extractionSchema],
         tool_choice: { type: "function", function: { name: "extract_citations" } },
-        max_tokens: 2000,
-        temperature: 0.0
+        max_completion_tokens: 4000,
       }),
     });
 
@@ -340,20 +246,17 @@ Only return JSON. No explanations or markdown.`;
     
     const result = JSON.parse(extractionResult);
     
-    // Optional lightweight validation if needed
+    // Lightweight validation
     if (!skipValidation && result.citations && result.citations.length > 0) {
       console.log('Performing lightweight validation...');
       
-      // Quick validation to ensure required fields exist and have correct types
-      result.citations = result.citations.filter(citation => {
-        // Remove empty rows
+      result.citations = result.citations.filter((citation: Citation) => {
         const hasContent = Object.values(citation).some(val => 
           val !== "" && val !== null && val !== undefined
         );
         
-        // Ensure paragraph number is integer
         if (citation["Paragraph No."] !== undefined) {
-          citation["Paragraph No."] = parseInt(citation["Paragraph No."]) || null;
+          citation["Paragraph No."] = parseInt(String(citation["Paragraph No."])) || 0;
         }
         
         return hasContent;
