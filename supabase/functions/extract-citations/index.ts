@@ -217,7 +217,7 @@ Return ONLY valid JSON via tool call.`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-mini',
+        model: 'gpt-5-mini-2025-08-07',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Page ${pageNumber} text:\n\n${pageText}` }
