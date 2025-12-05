@@ -390,7 +390,13 @@ const Index = () => {
         {/* Compact Header */}
         <header className="flex items-center justify-between px-4 py-2 border-b bg-card shrink-0">
           <div className="flex items-center gap-2">
-            <img src={logo} alt="Logo" className="w-7 h-7" />
+            <img
+              src={logo}
+              alt="Logo"
+              className="h-8 w-auto object-contain flex-shrink-0"
+              style={{ maxWidth: "160px" }}
+            />
+
             <h1 className="text-base font-semibold tracking-tight text-foreground">
               Exhibit Extraction
             </h1>

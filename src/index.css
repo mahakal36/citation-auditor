@@ -78,3 +78,17 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+
+header {
+  background: #001727 !important;
+}
+
+header h1 {
+  color: white !important;
+  font-size: 20px !important;
+}
+
+#\:r6\: .bg-card{ 
+  height: 45px !important; 
+}

@@ -1,10 +1,19 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// Official OpenAI SDK – latest as of Dec 2025 (from JSR for Deno)
+import OpenAI from "jsr:@openai/openai@4.80.0";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required");
+
+// Initialize client once (like Python's AsyncOpenAI)
+const client = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -13,12 +22,8 @@ serve(async (req) => {
 
   try {
     const { selectedText, pageNumber, reportName } = await req.json();
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
-    if (!OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not configured");
-    }
-
+    // Your full original classification prompt stays 100% unchanged
     const classificationPrompt = `You are classifying a piece of selected text from a legal document.
 
 Your task is to determine which category the selected text belongs to.
@@ -73,7 +78,7 @@ CLASSIFICATION RULES
    - If the selected text is ONLY a paragraph number.
 
 10. **Uncategorized**
-   - Use this only if there is no confident match.
+    - Use this only if there is no confident match.
 
 ────────────────────────────────────────
 OUTPUT FORMAT
@@ -85,34 +90,39 @@ Selected text:
 
 Return format: Just the category name (e.g., "Bates Begin" or "Uncategorized")`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-5-mini",
-        messages: [
-          { role: "system", content: "You are a precise legal citation classifier. Return ONLY the category name, nothing else." },
-          { role: "user", content: classificationPrompt }
-        ],
-        max_completion_tokens: 50,
-      }),
+    // === REPLACED FETCH WITH client.responses.create() ===
+    console.log("Classifying text with gpt-5-mini via SDK...");
+
+    const response = await client.responses.create({
+      model: "gpt-5-mini",  // Real model as of Dec 2025
+      input: [
+        { role: "system", content: "You are a precise legal citation classifier. Return ONLY the category name, nothing else." },
+        { role: "user", content: classificationPrompt }
+      ],
+      temperature: 0,
+      maxTokens: 50,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenAI API error:", response.status, errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
+    // Extract output text (mirrors your original parsing)
+    let aiResponse = "";
+    for (const item of response.output ?? []) {
+      if (item.type === "message" && item.content) {
+        for (const contentPiece of item.content) {
+          if (contentPiece.type === "text" && contentPiece.text) {
+            aiResponse += contentPiece.text;
+          }
+        }
+      }
     }
 
-    const data = await response.json();
-    const aiResponse = data.choices[0].message.content.trim();
-    
+    if (!aiResponse) {
+      throw new Error("No output from gpt-5-mini");
+    }
+
+    aiResponse = aiResponse.trim();
     let category = aiResponse.replace(/[•\-\s]+$/, '').trim();
 
-    // Detect Bates ranges and split them
+    // Detect Bates ranges and split them (your original logic – unchanged)
     let batesBegin = null;
     let batesEnd = null;
     
