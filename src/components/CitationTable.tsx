@@ -93,48 +93,59 @@ export const CitationTable = ({
     columnHelper.accessor("Non-Bates Exhibits", {
       header: "Non-Bates Exhibits",
       cell: (info) => renderEditableCell(info, "Non-Bates Exhibits"),
+      size: 140,
     }),
     columnHelper.accessor("Depositions", {
       header: "Depositions",
       cell: (info) => renderEditableCell(info, "Depositions"),
+      size: 100,
     }),
     columnHelper.accessor("date", {
       header: "Date",
       cell: (info) => renderEditableCell(info, "date"),
+      size: 80,
     }),
     columnHelper.accessor("cites", {
       header: "Cites",
       cell: (info) => renderEditableCell(info, "cites"),
+      size: 80,
     }),
     columnHelper.accessor("BatesBegin", {
       header: "Bates Begin",
       cell: (info) => renderEditableCell(info, "BatesBegin"),
+      size: 100,
     }),
     columnHelper.accessor("BatesEnd", {
       header: "Bates End",
       cell: (info) => renderEditableCell(info, "BatesEnd"),
+      size: 100,
     }),
     columnHelper.accessor("Pinpoint", {
       header: "Pinpoint",
       cell: (info) => renderEditableCell(info, "Pinpoint"),
+      size: 80,
     }),
     columnHelper.accessor("Code Lines", {
       header: "Code Lines",
       cell: (info) => renderEditableCell(info, "Code Lines"),
+      size: 80,
     }),
     columnHelper.accessor("Report Name", {
       header: "Report Name",
       cell: (info) => renderEditableCell(info, "Report Name"),
+      size: 120,
     }),
     {
       id: "Paragraph No.",
       accessorFn: (row) => row["Paragraph No."],
       header: "Para.",
       cell: (info) => renderEditableCell(info, "Paragraph No."),
+      size: 50,
     },
     columnHelper.display({
       id: "actions",
       header: "",
+      size: 40,
       cell: (info) => (
         <Button
           variant="ghost"
@@ -157,7 +168,7 @@ export const CitationTable = ({
   return (
     <div className="h-full flex flex-col">
       <div className="border rounded-md overflow-y-auto overflow-x-hidden flex-1">
-        <table className="w-full border-collapse text-xs">
+        <table className="w-full border-collapse text-xs table-fixed">
           <thead className="bg-muted/80 sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -165,6 +176,7 @@ export const CitationTable = ({
                   <th
                     key={header.id}
                     className="border-b border-r last:border-r-0 px-2 py-2 text-left text-xs font-medium text-muted-foreground"
+                    style={{ width: header.column.getSize() }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
@@ -185,6 +197,7 @@ export const CitationTable = ({
                   <td 
                     key={cell.id} 
                     className="border-b border-r last:border-r-0 p-0 align-top"
+                    style={{ width: cell.column.getSize() }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
