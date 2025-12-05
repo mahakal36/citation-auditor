@@ -217,14 +217,15 @@ Return ONLY valid JSON via tool call.`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-mini-2025-08-07',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Page ${pageNumber} text:\n\n${pageText}` }
         ],
         tools: [extractionSchema],
         tool_choice: { type: "function", function: { name: "extract_citations" } },
-        max_completion_tokens: 4000,
+        max_tokens: 4000,
+        temperature: 0.1,
       }),
     });
 
