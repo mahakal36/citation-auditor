@@ -292,7 +292,7 @@ serve(async (req) => {
       tools: [extractionSchema],
       tool_choice: { type: "function", function: { name: "extract_citations" } },
       temperature: 0,
-     :max_tokens: 4000,
+      max_output_tokens: 4000,
     });
 
     // Extract tool call result

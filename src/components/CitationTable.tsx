@@ -8,13 +8,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import type { CitationEntry } from "@/types/citation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface CitationTableProps {
   data: CitationEntry[];
   onDataChange: (data: CitationEntry[]) => void;
   onRowHover?: (rowIndex: number | null) => void;
   onCitationCorrected?: (citation: CitationEntry) => void;
+  selectedRowIndex?: number | null;
+  onRowSelect?: (rowIndex: number) => void;
 }
 
 const columnHelper = createColumnHelper<CitationEntry>();
@@ -24,6 +26,8 @@ export const CitationTable = ({
   onDataChange,
   onRowHover,
   onCitationCorrected,
+  selectedRowIndex,
+  onRowSelect,
 }: CitationTableProps) => {
 
   const handleCellEdit = (rowIndex: number, columnId: string, value: string) => {
@@ -53,24 +57,124 @@ export const CitationTable = ({
     columnId: string;
   }) => {
     const divRef = useRef<HTMLDivElement>(null);
+    const [localValue, setLocalValue] = useState<string>(value ?? "");
+    const [isEditing, setIsEditing] = useState(false);
+    const saveTimerRef = useRef<number | null>(null);
+    const caretOffsetRef = useRef<number>(0);
 
-    useEffect(() => {
-      if (divRef.current && divRef.current.textContent !== value) {
-        divRef.current.textContent = value === null || value === undefined ? "" : String(value);
+    const saveCaret = () => {
+      const el = divRef.current;
+      const sel = window.getSelection?.();
+      if (!el || !sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.startContainer)) return;
+      const pre = range.cloneRange();
+      pre.selectNodeContents(el);
+      pre.setEnd(range.startContainer, range.startOffset);
+      caretOffsetRef.current = pre.toString().length;
+    };
+
+    const restoreCaret = () => {
+      const el = divRef.current;
+      if (!el) return;
+      const target = Math.min(caretOffsetRef.current, el.textContent?.length || 0);
+      const range = document.createRange();
+      const sel = window.getSelection?.();
+      if (!sel) return;
+      let remaining = target;
+
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      let node: Node | null = walker.nextNode();
+      while (node) {
+        const text = node.textContent || "";
+        if (remaining <= text.length) {
+          range.setStart(node, remaining);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          return;
+        }
+        remaining -= text.length;
+        node = walker.nextNode();
       }
-    }, [value]);
+      // Default to end
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    };
+
+    // Keep local value in sync with external changes when not actively editing
+    useEffect(() => {
+      const external = value === null || value === undefined ? "" : String(value);
+      if (!isEditing && localValue !== external) {
+        setLocalValue(external);
+      }
+    }, [value, isEditing, localValue]);
+
+    // Reflect local value into the contentEditable div without losing caret when editing
+    useEffect(() => {
+      const el = divRef.current;
+      if (!el) return;
+      if (el.textContent !== localValue) {
+        // Only overwrite text when not focused or when sync needed
+        if (!isEditing || document.activeElement !== el) {
+          el.textContent = localValue;
+        }
+      }
+    }, [localValue, isEditing]);
+
+    const commit = () => {
+      const text = (divRef.current?.textContent ?? localValue) || "";
+      setLocalValue(text);
+      handleCellEdit(rowIndex, columnId, text);
+    };
 
     return (
-      <div
-        ref={divRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={(e) => {
-          const text = e.currentTarget.textContent || "";
-          handleCellEdit(rowIndex, columnId, text);
-        }}
-        className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors"
-      />
+      <div className="relative group">
+        <div
+          ref={divRef}
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck={false}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => {
+            setIsEditing(false);
+            commit();
+          }}
+          onInput={(e) => {
+            const text = e.currentTarget.textContent || "";
+            setLocalValue(text);
+            // Preserve caret across immediate save by capturing/restoring selection
+            saveCaret();
+            handleCellEdit(rowIndex, columnId, text);
+            // Restore after React cycle
+            requestAnimationFrame(() => requestAnimationFrame(restoreCaret));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.currentTarget as HTMLDivElement).blur();
+            }
+          }}
+          className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors pr-5 cursor-text"
+        />
+        <button
+          type="button"
+          aria-label="Clear cell"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setLocalValue("");
+            if (divRef.current) divRef.current.textContent = "";
+            handleCellEdit(rowIndex, columnId, "");
+          }}
+          className="absolute right-0.5 top-0.5 h-4 w-4 text-[10px] leading-4 text-muted-foreground hover:text-foreground rounded hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Clear"
+        >
+          ×
+        </button>
+      </div>
     );
   };
 
@@ -189,9 +293,10 @@ export const CitationTable = ({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="hover:bg-muted/40 transition-colors"
+                className={`hover:bg-muted/40 transition-colors ${selectedRowIndex === row.index ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
                 onMouseEnter={() => onRowHover?.(row.index)}
                 onMouseLeave={() => onRowHover?.(null)}
+                onClick={() => onRowSelect?.(row.index)}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td 
