@@ -1,6 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import OpenAI from "https://jsr.io/@openai/openai/0.5.0/mod.ts";
+import OpenAI from "https://esm.sh/openai@4.67.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -207,28 +207,19 @@ Selected text:
 
 Return format: Just the category name (e.g., "Bates Begin" or "Uncategorized")`;
 
-    // Use the same OpenAI Responses API as extract-citations
-    const response = await client.responses.create({
-      model: "gpt-5-mini",
-      input: [
+    // Use standard OpenAI chat completions API
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
         { role: "system", content: "You are a precise legal citation classifier. Return ONLY the category name, nothing else." },
         { role: "user", content: classificationPrompt }
       ],
       temperature: 0,
-      max_output_tokens: 50,
+      max_tokens: 50,
     });
 
-    // Collect textual output
-    let aiResponse = "";
-    for (const item of response.output ?? []) {
-      if (item.type === "message" && item.content) {
-        for (const piece of item.content) {
-          if (piece.type === "text" && piece.text) {
-            aiResponse += piece.text;
-          }
-        }
-      }
-    }
+    // Extract text response
+    let aiResponse = response.choices?.[0]?.message?.content || "";
 
     aiResponse = aiResponse.trim();
     if (!aiResponse) throw new Error("Empty response from model");
