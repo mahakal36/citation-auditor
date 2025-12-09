@@ -56,108 +56,33 @@ export const CitationTable = ({
     rowIndex: number;
     columnId: string;
   }) => {
-    const divRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
     const [localValue, setLocalValue] = useState<string>(value ?? "");
-    const [isEditing, setIsEditing] = useState(false);
-    const saveTimerRef = useRef<number | null>(null);
-    const caretOffsetRef = useRef<number>(0);
 
-    const saveCaret = () => {
-      const el = divRef.current;
-      const sel = window.getSelection?.();
-      if (!el || !sel || sel.rangeCount === 0) return;
-      const range = sel.getRangeAt(0);
-      if (!el.contains(range.startContainer)) return;
-      const pre = range.cloneRange();
-      pre.selectNodeContents(el);
-      pre.setEnd(range.startContainer, range.startOffset);
-      caretOffsetRef.current = pre.toString().length;
-    };
-
-    const restoreCaret = () => {
-      const el = divRef.current;
-      if (!el) return;
-      const target = Math.min(caretOffsetRef.current, el.textContent?.length || 0);
-      const range = document.createRange();
-      const sel = window.getSelection?.();
-      if (!sel) return;
-      let remaining = target;
-
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-      let node: Node | null = walker.nextNode();
-      while (node) {
-        const text = node.textContent || "";
-        if (remaining <= text.length) {
-          range.setStart(node, remaining);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-          return;
-        }
-        remaining -= text.length;
-        node = walker.nextNode();
-      }
-      // Default to end
-      range.selectNodeContents(el);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    };
-
-    // Keep local value in sync with external changes when not actively editing
+    // Sync with external value when not focused
     useEffect(() => {
       const external = value === null || value === undefined ? "" : String(value);
-      if (!isEditing && localValue !== external) {
+      if (document.activeElement !== inputRef.current && localValue !== external) {
         setLocalValue(external);
       }
-    }, [value, isEditing, localValue]);
+    }, [value]);
 
-    // Reflect local value into the contentEditable div without losing caret when editing
-    useEffect(() => {
-      const el = divRef.current;
-      if (!el) return;
-      if (el.textContent !== localValue) {
-        // Only overwrite text when not focused or when sync needed
-        if (!isEditing || document.activeElement !== el) {
-          el.textContent = localValue;
-        }
-      }
-    }, [localValue, isEditing]);
-
-    const commit = () => {
-      const text = (divRef.current?.textContent ?? localValue) || "";
-      setLocalValue(text);
-      handleCellEdit(rowIndex, columnId, text);
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setLocalValue(newValue);
+      handleCellEdit(rowIndex, columnId, newValue);
     };
 
     return (
       <div className="relative group">
-        <div
-          ref={divRef}
-          contentEditable
-          suppressContentEditableWarning
+        <input
+          ref={inputRef}
+          type="text"
+          value={localValue}
+          onChange={handleChange}
           spellCheck={false}
-          onFocus={() => setIsEditing(true)}
-          onBlur={() => {
-            setIsEditing(false);
-            commit();
-          }}
-          onInput={(e) => {
-            const text = e.currentTarget.textContent || "";
-            setLocalValue(text);
-            // Preserve caret across immediate save by capturing/restoring selection
-            saveCaret();
-            handleCellEdit(rowIndex, columnId, text);
-            // Restore after React cycle
-            requestAnimationFrame(() => requestAnimationFrame(restoreCaret));
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.currentTarget as HTMLDivElement).blur();
-            }
-          }}
-          className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors pr-5 cursor-text"
+          className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors pr-5 bg-transparent border-none cursor-text selection:bg-primary/20"
+          style={{ caretColor: 'auto' }}
         />
         <button
           type="button"
@@ -166,10 +91,10 @@ export const CitationTable = ({
             e.preventDefault();
             e.stopPropagation();
             setLocalValue("");
-            if (divRef.current) divRef.current.textContent = "";
             handleCellEdit(rowIndex, columnId, "");
+            inputRef.current?.focus();
           }}
-          className="absolute right-0.5 top-0.5 h-4 w-4 text-[10px] leading-4 text-muted-foreground hover:text-foreground rounded hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute right-0.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[10px] leading-4 text-muted-foreground hover:text-foreground rounded hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity"
           title="Clear"
         >
           ×

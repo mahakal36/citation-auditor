@@ -1,8 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getDocument } from "https://deno.land/x/pdfjs@2.12.313/dist/pdf.js";
-
-import OpenAI from "https://jsr.io/@openai/openai/0.5.0/mod.ts";
+import OpenAI from "https://esm.sh/openai@4.67.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,51 +13,48 @@ if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required");
 const client = new OpenAI({ apiKey: OPENAI_API_KEY });
 const REPORT_NAME_PLACEHOLDER = "Legal Expert Report";
 
-// FULL ORIGINAL EXTRACTION SCHEMA
-const extractionSchema = {
-  type: "function",
-  function: {
-    name: "extract_citations",
-    description: "Extract all citations from a legal document page",
-    parameters: {
-      type: "object",
-      properties: {
-        citations: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              "Non-Bates Exhibits": { type: "string", description: "Full title, source, and URL of non-Bates exhibit. Blank string if not applicable." },
-              "Depositions": { type: "string", description: "Name of the deponent. Use blank string otherwise." },
-              date: { type: "string", description: "Date of the deposition (capitalize first letter). Use blank string otherwise." },
-              cites: { type: "string", description: "Page and line numbers for deposition (capitalize first letter). Use blank string otherwise." },
-              BatesBegin: { type: "string", description: "Starting Bates number or single Bates. Use blank string otherwise." },
-              BatesEnd: { type: "string", description: "Ending Bates number of range. Use blank string otherwise." },
-              Pinpoint: { type: "string", description: "Specific reference/page number after 'at'. Use blank string otherwise." },
-              "Code Lines": { type: "string", description: "Specific page number, section, or access date. Use blank string otherwise." },
-              "Report Name": { type: "string", description: "The file name." },
-              "Paragraph No.": { type: "integer", description: "Paragraph number from main body text." }
-            },
-            required: ["Non-Bates Exhibits", "Depositions", "date", "cites", "BatesBegin", "BatesEnd", "Pinpoint", "Code Lines", "Report Name", "Paragraph No."]
-          }
-        },
-        memory: {
+// FULL ORIGINAL EXTRACTION SCHEMA for function calling
+const extractionFunction = {
+  name: "extract_citations",
+  description: "Extract all citations from a legal document page",
+  parameters: {
+    type: "object",
+    properties: {
+      citations: {
+        type: "array",
+        items: {
           type: "object",
           properties: {
-            last_paragraph_number_used: { type: ["integer", "null"], description: "Last paragraph number used in extraction" },
-            incomplete_exhibit_detected: { type: "boolean", description: "Whether an incomplete exhibit was detected" },
-            raw_text: { type: "string", description: "Raw text of current or last page processed" },
-            last_page_processed: { type: "integer", description: "Last page number processed" }
+            "Non-Bates Exhibits": { type: "string", description: "Full title, source, and URL of non-Bates exhibit. Blank string if not applicable." },
+            "Depositions": { type: "string", description: "Name of the deponent. Use blank string otherwise." },
+            date: { type: "string", description: "Date of the deposition (capitalize first letter). Use blank string otherwise." },
+            cites: { type: "string", description: "Page and line numbers for deposition (capitalize first letter). Use blank string otherwise." },
+            BatesBegin: { type: "string", description: "Starting Bates number or single Bates. Use blank string otherwise." },
+            BatesEnd: { type: "string", description: "Ending Bates number of range. Use blank string otherwise." },
+            Pinpoint: { type: "string", description: "Specific reference/page number after 'at'. Use blank string otherwise." },
+            "Code Lines": { type: "string", description: "Specific page number, section, or access date. Use blank string otherwise." },
+            "Report Name": { type: "string", description: "The file name." },
+            "Paragraph No.": { type: "integer", description: "Paragraph number from main body text." }
           },
-          required: ["last_paragraph_number_used", "incomplete_exhibit_detected", "raw_text", "last_page_processed"]
+          required: ["Non-Bates Exhibits", "Depositions", "date", "cites", "BatesBegin", "BatesEnd", "Pinpoint", "Code Lines", "Report Name", "Paragraph No."]
         }
       },
-      required: ["citations", "memory"]
-    }
+      memory: {
+        type: "object",
+        properties: {
+          last_paragraph_number_used: { type: ["integer", "null"], description: "Last paragraph number used in extraction" },
+          incomplete_exhibit_detected: { type: "boolean", description: "Whether an incomplete exhibit was detected" },
+          raw_text: { type: "string", description: "Raw text of current or last page processed" },
+          last_page_processed: { type: "integer", description: "Last page number processed" }
+        },
+        required: ["last_paragraph_number_used", "incomplete_exhibit_detected", "raw_text", "last_page_processed"]
+      }
+    },
+    required: ["citations", "memory"]
   }
 };
 
-// FULL ORIGINAL SYSTEM PROMPT — 100% VERBATIM
+// FULL ORIGINAL SYSTEM PROMPT
 const getSystemPrompt = (reportName: string, fewShotExamples: any[] = []) => `You analyze legal document pages and extract citations into JSON.
 Input may contain:
 • ONE PAGE at a time
@@ -234,25 +229,6 @@ Return ONLY valid JSON:
 
 Only return JSON. No explanations or markdown.`;
 
-// PDF TEXT EXTRACTION
-async function extractTextFromPDF(pdfData: Uint8Array): Promise<string> {
-  try {
-    const loadingTask = getDocument({ data: pdfData });
-    const pdf = await loadingTask.promise;
-    let fullText = "";
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item: any) => item.str).join(" ");
-      fullText += `\n--- PAGE ${pageNum} ---\n${pageText}\n`;
-    }
-    return fullText;
-  } catch (error) {
-    console.error("PDF extraction error:", error);
-    throw new Error("Failed to extract text from PDF");
-  }
-}
-
 // MAIN SERVER
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -260,53 +236,30 @@ serve(async (req) => {
   }
 
   try {
-    const { pdfData, pageNumber, reportName, fewShotExamples = [], skipValidation = true } = await req.json();
+    const { pageText, pageNumber, reportName, fewShotExamples = [], skipValidation = true } = await req.json();
 
-    let pageText = "";
-    if (pdfData) {
-      const pdfBytes = typeof pdfData === "string"
-        ? Uint8Array.from(atob(pdfData.replace(/^data:application\/pdf;base64,/, "")), c => c.charCodeAt(0))
-        : new Uint8Array(pdfData);
+    if (!pageText) throw new Error("No text provided for extraction");
 
-      const fullText = await extractTextFromPDF(pdfBytes);
-
-      const pageStartMarker = `--- PAGE ${pageNumber} ---`;
-      const nextPageMarker = `--- PAGE ${pageNumber + 1} ---`;
-      const startIndex = fullText.indexOf(pageStartMarker);
-      if (startIndex === -1) throw new Error(`Page ${pageNumber} marker not found`);
-
-      const contentStart = startIndex + pageStartMarker.length;
-      const contentEnd = fullText.includes(nextPageMarker) ? fullText.indexOf(nextPageMarker) : fullText.length;
-      pageText = fullText.slice(contentStart, contentEnd).trim();
-    }
-
-    if (!pageText) throw new Error("No text extracted from PDF");
-
-    // REAL client.responses.create() CALL
-    const response = await client.responses.create({
-      model: "gpt-5-mini",
-      input: [
+    // Use standard OpenAI chat completions with function calling
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
         { role: "system", content: getSystemPrompt(reportName, fewShotExamples) },
         { role: "user", content: `Page ${pageNumber} text:\n\n${pageText}` }
       ],
-      tools: [extractionSchema],
+      tools: [{ type: "function", function: extractionFunction }],
       tool_choice: { type: "function", function: { name: "extract_citations" } },
       temperature: 0,
-      max_output_tokens: 4000,
+      max_tokens: 4000,
     });
 
     // Extract tool call result
-    let jsonString = "";
-    for (const item of response.output ?? []) {
-      if (item.type === "tool_call" && item.function?.name === "extract_citations") {
-        jsonString = item.function.arguments;
-        break;
-      }
+    const toolCall = response.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.function.name !== "extract_citations") {
+      throw new Error("No extract_citations tool call returned");
     }
 
-    if (!jsonString) throw new Error("No extract_citations tool call returned");
-
-    const result = JSON.parse(jsonString);
+    const result = JSON.parse(toolCall.function.arguments);
 
     // Optional cleanup
     if (!skipValidation && result.citations?.length > 0) {
