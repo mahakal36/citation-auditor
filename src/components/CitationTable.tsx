@@ -8,15 +8,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import type { CitationEntry } from "@/types/citation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 interface CitationTableProps {
   data: CitationEntry[];
   onDataChange: (data: CitationEntry[]) => void;
   onRowHover?: (rowIndex: number | null) => void;
   onCitationCorrected?: (citation: CitationEntry) => void;
-  selectedRowIndex?: number | null;
-  onRowSelect?: (rowIndex: number) => void;
 }
 
 const columnHelper = createColumnHelper<CitationEntry>();
@@ -26,8 +24,6 @@ export const CitationTable = ({
   onDataChange,
   onRowHover,
   onCitationCorrected,
-  selectedRowIndex,
-  onRowSelect,
 }: CitationTableProps) => {
 
   const handleCellEdit = (rowIndex: number, columnId: string, value: string) => {
@@ -56,50 +52,25 @@ export const CitationTable = ({
     rowIndex: number;
     columnId: string;
   }) => {
-    const inputRef = useRef<HTMLInputElement>(null);
-    const [localValue, setLocalValue] = useState<string>(value ?? "");
+    const divRef = useRef<HTMLDivElement>(null);
 
-    // Sync with external value when not focused
     useEffect(() => {
-      const external = value === null || value === undefined ? "" : String(value);
-      if (document.activeElement !== inputRef.current && localValue !== external) {
-        setLocalValue(external);
+      if (divRef.current && divRef.current.textContent !== value) {
+        divRef.current.textContent = value === null || value === undefined ? "" : String(value);
       }
     }, [value]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = e.target.value;
-      setLocalValue(newValue);
-      handleCellEdit(rowIndex, columnId, newValue);
-    };
-
     return (
-      <div className="relative group">
-        <input
-          ref={inputRef}
-          type="text"
-          value={localValue}
-          onChange={handleChange}
-          spellCheck={false}
-          className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors pr-5 bg-transparent border-none cursor-text selection:bg-primary/20"
-          style={{ caretColor: 'auto' }}
-        />
-        <button
-          type="button"
-          aria-label="Clear cell"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setLocalValue("");
-            handleCellEdit(rowIndex, columnId, "");
-            inputRef.current?.focus();
-          }}
-          className="absolute right-0.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[10px] leading-4 text-muted-foreground hover:text-foreground rounded hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Clear"
-        >
-          ×
-        </button>
-      </div>
+      <div
+        ref={divRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={(e) => {
+          const text = e.currentTarget.textContent || "";
+          handleCellEdit(rowIndex, columnId, text);
+        }}
+        className="w-full min-h-[24px] px-1.5 py-1 text-xs outline-none focus:bg-primary/5 rounded transition-colors"
+      />
     );
   };
 
@@ -218,10 +189,9 @@ export const CitationTable = ({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className={`hover:bg-muted/40 transition-colors ${selectedRowIndex === row.index ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                className="hover:bg-muted/40 transition-colors"
                 onMouseEnter={() => onRowHover?.(row.index)}
                 onMouseLeave={() => onRowHover?.(null)}
-                onClick={() => onRowSelect?.(row.index)}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td 
