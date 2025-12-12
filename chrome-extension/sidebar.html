@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Citation Extractor</title>
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-title">
+        <img src="icons/icon32.png" alt="Logo" class="logo">
+        <h1>Exhibit Extraction</h1>
+      </div>
+      <div class="header-actions">
+        <button id="extractBtn" class="btn btn-primary" title="Extract citations from current page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3v12M5 10l7 7 7-7"/>
+          </svg>
+          Extract
+        </button>
+        <button id="exportBtn" class="btn btn-secondary" title="Export to Excel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Export
+        </button>
+      </div>
+    </header>
+    
+    <!-- Status Bar -->
+    <div id="statusBar" class="status-bar">
+      <span id="statusText">Ready - Select text or click Extract</span>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+      <div class="spinner"></div>
+      <span id="loadingText">Extracting citations...</span>
+    </div>
+    
+    <!-- Instructions -->
+    <div id="instructions" class="instructions">
+      <h3>How to use:</h3>
+      <ol>
+        <li>Open a PDF in Chrome</li>
+        <li>Click <strong>Extract</strong> to auto-extract citations</li>
+        <li>Or select text in the PDF to classify it</li>
+        <li>Edit extracted data in the table below</li>
+        <li>Click <strong>Export</strong> to download Excel file</li>
+      </ol>
+    </div>
+    
+    <!-- Citation Table -->
+    <div class="table-container">
+      <table id="citationTable" class="citation-table">
+        <thead>
+          <tr>
+            <th>Non-Bates Exhibits</th>
+            <th>Depositions</th>
+            <th>date</th>
+            <th>cites</th>
+            <th>BatesBegin</th>
+            <th>BatesEnd</th>
+            <th>Pinpoint</th>
+            <th>Code Lines</th>
+            <th>Report Name</th>
+            <th>Paragraph No.</th>
+            <th class="actions-col"></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <!-- Rows will be inserted here -->
+        </tbody>
+      </table>
+      
+      <div id="emptyState" class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+        </svg>
+        <p>No citations extracted yet</p>
+        <small>Click Extract or select text in the PDF</small>
+      </div>
+    </div>
+    
+    <!-- Footer Actions -->
+    <footer class="footer">
+      <button id="addRowBtn" class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Add Row
+      </button>
+      <button id="clearAllBtn" class="btn btn-ghost btn-danger">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+        </svg>
+        Clear All
+      </button>
+      <span id="rowCount" class="row-count">0 rows</span>
+    </footer>
+  </div>
+  
+  <script src="sidebar.js"></script>
+</body>
+</html>
