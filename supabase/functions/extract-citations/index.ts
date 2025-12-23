@@ -234,6 +234,13 @@ Return ONLY valid JSON:
 
 Only return JSON. No explanations or markdown.`;
 
+
+function detectParagraphNumber(text: string): number | null {
+  const regex = /\b(?:¶\s*)?(\d{1,4})[.:)]?\s/g;
+  const match = regex.exec(text);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 // PDF TEXT EXTRACTION
 async function extractTextFromPDF(pdfData: Uint8Array): Promise<string> {
   try {
@@ -260,10 +267,20 @@ serve(async (req) => {
   }
 
   try {
-    const { pdfData, pageNumber, reportName, fewShotExamples = [], skipValidation = true } = await req.json();
+    const { 
+      pdfData, 
+      pageNumber, 
+      reportName, 
+      fewShotExamples = [], 
+      skipValidation = true, 
+      pageText: incomingPageText,
+      memory = {}                     // << added
+    } = await req.json();
 
     let pageText = "";
-    if (pdfData) {
+    if (typeof incomingPageText === "string" && incomingPageText.trim().length > 0) {
+      pageText = incomingPageText.trim();
+    } else if (pdfData) {
       const pdfBytes = typeof pdfData === "string"
         ? Uint8Array.from(atob(pdfData.replace(/^data:application\/pdf;base64,/, "")), c => c.charCodeAt(0))
         : new Uint8Array(pdfData);
@@ -280,22 +297,42 @@ serve(async (req) => {
       pageText = fullText.slice(contentStart, contentEnd).trim();
     }
 
-    if (!pageText) throw new Error("No text extracted from PDF");
+    if (!pageText) throw new Error("No text extracted from PDF or pageText not provided");
 
-    // REAL client.responses.create() CALL
+    // detect the first paragraph number on this page
+// detect new paragraph number
+    const detectedParagraph = detectParagraphNumber(pageText);
+
+    // carry forward logic
+    let currentParagraphNo;
+    if (detectedParagraph !== null) {
+      currentParagraphNo = detectedParagraph;
+    } else {
+      currentParagraphNo = memory.last_paragraph_number_used ?? null;
+    }
+
+    // create updated memory object for this page
+    const updatedMemory = {
+      last_paragraph_number_used: currentParagraphNo,
+      incomplete_exhibit_detected: false,
+      raw_text: pageText,
+      last_page_processed: pageNumber
+    };
+
+
     const response = await client.responses.create({
-      model: "gpt-5-mini",
+      model: "gpt-5.2-mini",
       input: [
         { role: "system", content: getSystemPrompt(reportName, fewShotExamples) },
+        { role: "system", content: `last_paragraph_number_used: ${currentParagraphNo}` }, // added
         { role: "user", content: `Page ${pageNumber} text:\n\n${pageText}` }
       ],
       tools: [extractionSchema],
       tool_choice: { type: "function", function: { name: "extract_citations" } },
       temperature: 0,
-     :max_tokens: 4000,
+      max_output_tokens: 4000,
     });
 
-    // Extract tool call result
     let jsonString = "";
     for (const item of response.output ?? []) {
       if (item.type === "tool_call" && item.function?.name === "extract_citations") {
@@ -308,11 +345,12 @@ serve(async (req) => {
 
     const result = JSON.parse(jsonString);
 
-    // Optional cleanup
+    result.memory = updatedMemory;        // <-- insert continuity memory
+
     if (!skipValidation && result.citations?.length > 0) {
       result.citations = result.citations
-        .filter((c: any) => Object.values(c).some((v: any) => v !== "" && v != null))
-        .map((c: any) => {
+        .filter((c) => Object.values(c).some((v) => v !== "" && v != null))
+        .map((c) => {
           c["Paragraph No."] = parseInt(c["Paragraph No."], 10) || null;
           return c;
         });
